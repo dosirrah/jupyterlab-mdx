@@ -34,7 +34,7 @@ vendor/
 *.coverprofile
 
 # dependencies
-nodes_modules/
+node_modules/
 
 # Distribution / packaging
 .Python
@@ -88,6 +88,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+coverage/
 
 # cache
 .cache
@@ -223,3 +224,10 @@ docker-compose.override.yml
 *.pid
 *.tmp
 
+refs/
+
+# generated extension
+jupyter_mdx/
+
+# IDE temp or generated files
+.virtual_documents/

@@ -33,6 +33,9 @@ vendor/
 # Go coverage profiles
 *.coverprofile
 
+# dependencies
+nodes_modules/
+
 # Distribution / packaging
 .Python
 build/
@@ -63,13 +66,21 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+# other logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env
+.env.local
+
 # Unit test / coverage reports
 htmlcov/
 .tox/
 .nox/
 .coverage
 .coverage.*
-.cache
 nosetests.xml
 coverage.xml
 *.cover
@@ -77,6 +88,10 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+
+# cache
+.cache
+.pnp.*
 
 # Translations
 *.mo

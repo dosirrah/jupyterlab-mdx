@@ -1,1 +1,1 @@
-import './base.css';
+// no-op style stub

@@ -5,11 +5,11 @@ import { processAll } from './xr';  // Your main label processing logic
 import { Cell } from '@jupyterlab/cells';
 
 const plugin: JupyterFrontEndPlugin<void> = {
-  id: 'jupyter-mdx',
+  id: 'jupyterlab-mdx',
   autoStart: true,
   requires: [INotebookTracker],
   activate: (app: JupyterFrontEnd, tracker: INotebookTracker) => {
-    console.log('JupyterLab extension jupyter-mdx is activated!');
+    console.log('JupyterLab extension jupyterlab-mdx is activated!');
 
     const wireCell = (cell: any) => {
       if (cell.model?.type !== 'markdown' || cell._mdxWired) return;
@@ -18,14 +18,14 @@ const plugin: JupyterFrontEndPlugin<void> = {
       // Only call processAll after user-initiated rendering
       cell.renderedChanged.connect(() => {
         if ((cell as MarkdownCell).rendered) {
-          console.log("jupyter-mdx: Cell re-rendered → processAll()");
-          processAll();
+          console.log("jupyterlab-mdx: Cell re-rendered → processAll()");
+          processAll(tracker);
         }
       });
     };
 
     const hookNotebook = (panel: any) => {
-      console.log("jupyter-mdx: Notebook widget added");
+      console.log("jupyterlab-mdx: Notebook widget added");
 
       panel.content.widgets.forEach(wireCell);
       panel.content.model?.cells.changed.connect(() => {
@@ -50,7 +50,7 @@ const plugin: JupyterFrontEndPlugin<void> = {
       });
 
       Promise.all(promises).then(() => {
-        console.log("jupyter-mdx: All markdown cells rendered. Delaying to run processAll.");
+        console.log("jupyterlab-mdx: All markdown cells rendered. Delaying to run processAll.");
         // HACK.  I need to find a better way to handle this.   Even though
         // this doesn't happen until all the promises have completed, there
         // is still a race condition if I call processAll immediately
@@ -58,8 +58,8 @@ const plugin: JupyterFrontEndPlugin<void> = {
         // is called and thus there are no text nodes to update markdown
         // so I wait a bit.  Arggg....
         setTimeout(() => {
-          console.log("jupyter-mdx: Delayed processAll running now");
-          processAll();
+          console.log("jupyterlab-mdx: Delayed processAll running now");
+          processAll(tracker);
         }, 100); // You can increase to 50–100 ms if needed
       });
     };

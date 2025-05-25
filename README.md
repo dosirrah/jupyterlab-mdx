@@ -1,4 +1,4 @@
-# jupyter_mdx
+# jupyterlab_mdx
 
 [![Github Actions Status](https://github.com/dosirrah/jupyterlab-mdx/workflows/Build/badge.svg)](https://github.com/dosirrah/jupyterlab-mdx/actions/workflows/build.yml)[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/dosirrah/jupyterlab-mdx/main?urlpath=lab)
 Markdown extensions with support for cross-references
@@ -12,7 +12,7 @@ Markdown extensions with support for cross-references
 To install the extension, execute:
 
 ```bash
-pip install jupyter_mdx
+pip install jupyterlab_mdx
 ```
 
 ## Uninstall
@@ -20,12 +20,18 @@ pip install jupyter_mdx
 To remove the extension, execute:
 
 ```bash
-pip uninstall jupyter_mdx
+pip uninstall jupyterlab_mdx
 ```
 
 ## Contributing
 
 ### Development install
+
+    % yarn install
+    % docker-compose build jupyter
+    % docker-compose up -d jupyter
+
+HERE
 
 Note: You will need NodeJS to build the extension package.
 
@@ -35,7 +41,7 @@ The `jlpm` command is JupyterLab's pinned version of
 
 ```bash
 # Clone the repo to your local environment
-# Change directory to the jupyter_mdx directory
+# Change directory to the jupyterlab_mdx directory
 # Install package in development mode
 pip install -e "."
 # Link your development version of the extension with JupyterLab
@@ -64,12 +70,12 @@ jupyter lab build --minimize=False
 ### Development uninstall
 
 ```bash
-pip uninstall jupyter_mdx
+pip uninstall jupyterlab_mdx
 ```
 
 In development mode, you will also need to remove the symlink created by `jupyter labextension develop`
 command. To find its location, you can run `jupyter labextension list` to figure out where the `labextensions`
-folder is located. Then you can remove the symlink named `jupyter-mdx` within that folder.
+folder is located. Then you can remove the symlink named `jupyterlab-mdx` within that folder.
 
 ### Testing the extension
 

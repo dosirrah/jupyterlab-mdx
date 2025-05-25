@@ -1,31 +1,3 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="13" failures="0" errors="0" time="1.544">
-  <testsuite name="mdx cross-references" errors="0" failures="0" skipped="0" timestamp="2025-05-21T01:58:21" time="1.113" tests="13">
-    <testcase classname="mdx cross-references toId assembles (name, id) into &quot;name:id&quot;." name="mdx cross-references toId assembles (name, id) into &quot;name:id&quot;." time="0.002">
-    </testcase>
-    <testcase classname="mdx cross-references toId assembles (null, id) to &quot;id&quot;." name="mdx cross-references toId assembles (null, id) to &quot;id&quot;." time="0">
-    </testcase>
-    <testcase classname="mdx cross-references formats labels in &quot;eq&quot; named enumeration inside parentheses" name="mdx cross-references formats labels in &quot;eq&quot; named enumeration inside parentheses" time="0.001">
-    </testcase>
-    <testcase classname="mdx cross-references registers labels from text nodes" name="mdx cross-references registers labels from text nodes" time="0.009">
-    </testcase>
-    <testcase classname="mdx cross-references registers labels with named enumeration &quot;eq&quot;" name="mdx cross-references registers labels with named enumeration &quot;eq&quot;" time="0.002">
-    </testcase>
-    <testcase classname="mdx cross-references does not double-count repeated labels" name="mdx cross-references does not double-count repeated labels" time="0.001">
-    </testcase>
-    <testcase classname="mdx cross-references rewrites refs into links and labels" name="mdx cross-references rewrites refs into links and labels" time="0.006">
-    </testcase>
-    <testcase classname="mdx cross-references renders TAGGABLE names with parentheses" name="mdx cross-references renders TAGGABLE names with parentheses" time="0.003">
-    </testcase>
-    <testcase classname="mdx cross-references renders references to labels defined later in the file." name="mdx cross-references renders references to labels defined later in the file." time="0.003">
-    </testcase>
-    <testcase classname="mdx cross-references renders references to undefined labels with ??" name="mdx cross-references renders references to undefined labels with ??" time="0.001">
-    </testcase>
-    <testcase classname="mdx cross-references renders references to labels in different cells" name="mdx cross-references renders references to labels in different cells" time="0.003">
-    </testcase>
-    <testcase classname="mdx cross-references renders equations with tags." name="mdx cross-references renders equations with tags." time="0.002">
-    </testcase>
-    <testcase classname="mdx cross-references keeps enumerations independent from each other." name="mdx cross-references keeps enumerations independent from each other." time="0.002">
-    </testcase>
-  </testsuite>
+<testsuites name="jest tests" tests="0" failures="0" errors="0" time="3.144">
 </testsuites>

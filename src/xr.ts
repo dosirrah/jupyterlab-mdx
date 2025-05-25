@@ -1,5 +1,12 @@
 // xr.ts (inside src/ directory of your extension)
 
+import { INotebookTracker } from '@jupyterlab/notebook';
+import {
+  MarkdownCell,
+  isMarkdownCellModel
+} from '@jupyterlab/cells';
+
+
 // A label comes in one of two forms.   It is either a member of the global
 // enumeration or it is a membr of a named enumeration.   If it has the form
 // @foo then it is the member "foo" of the global enumeration.   If it has the form
@@ -38,41 +45,45 @@ function formatLabel(name: string | null, n: number | string, raw = false): stri
  *
  * It also supports named enumerations.
  */
-export function scanLabels(): void {
+export function scanLabels(tracker: INotebookTracker): void {
+
   labelMap.clear();
   enumCounters.clear();
   let count : number = 0;
 
   console.log("scanLabels");
 
-  document.querySelectorAll('.text_cell_render, .jp-RenderedHTMLCommon').forEach(cell => {
-    const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+  // walk every Markdown cell
+  for (const cell of tracker.currentWidget?.content.widgets ?? []) {
+    if (!(cell instanceof MarkdownCell)) {
+      continue;
+    }
 
-    while (walker.nextNode()) {
-      count++;
-      console.log("walker processed " + count + " nodes.");
-      const node = walker.currentNode;
-      if (node.nodeType === Node.TEXT_NODE) {
-        const text = (node as Text).data;
-        const re = /@([A-Za-z]+:)?([A-Za-z0-9:_\-]+)/g;
-        let m;
+    // narrow the model to IMarkdownCellModel so TS knows about .value
+    const model = cell.model;
+    if (!isMarkdownCellModel(model)) {
+      // if for some reason it isn’t, move on.
+      continue;
+    }
+    const text = model.sharedModel.getSource();
 
-        while ((m = re.exec(text)) !== null) {
-          const enumName = m[1];
-          const id = m[2];
-          const name = enumName ? enumName.slice(0, -1) : null;
-          const key = toId(name, id);
-
-          if (!labelMap.has(key)) {
-            const counterKey = name ?? '_global';
-            const n = (enumCounters.get(counterKey) ?? 0) + 1;
-            enumCounters.set(counterKey, n);
-            labelMap.set(key, { name, id, n });
-          }
-        }
+    count++;
+    console.log("scanLabels markdown node " + count + " text: " + text);
+    const re = /@([A-Za-z]+:)?([A-Za-z0-9:_\-]+)/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const enumName = m[1];
+      const id = m[2];
+      const name = enumName ? enumName.slice(0, -1) : null;
+      const key = toId(name, id);
+      if (!labelMap.has(key)) {
+        const counterKey = name ?? '_global';
+        const n = (enumCounters.get(counterKey) ?? 0) + 1;
+        enumCounters.set(counterKey, n);
+        labelMap.set(key, { name, id, n });
       }
     }
-  });
+  }
 }
 
 
@@ -142,13 +153,13 @@ export function rewriteAll(): void {
 
 let isProcessing = false;
 
-export function processAll(): void {
+export function processAll(tracker: INotebookTracker): void {
   console.log("processAll isProcessing=" + isProcessing);
   if (isProcessing) return;  // Prevent recursion
 
   isProcessing = true;
   try {
-    scanLabels();
+    scanLabels(tracker);
     rewriteAll();
   } finally {
     isProcessing = false;  // Ensure flag is cleared even if an error occurs

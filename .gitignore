@@ -227,7 +227,7 @@ docker-compose.override.yml
 refs/
 
 # generated extension
-jupyter_mdx/
+jupyterlab_mdx/
 
 # IDE temp or generated files
 .virtual_documents/

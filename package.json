@@ -1,5 +1,5 @@
 {
-  "name": "jupyter-mdx",
+  "name": "jupyterlab-mdx",
   "version": "0.1.0",
   "description": "Markdown extensions with support for cross-references",
   "keywords": [
@@ -40,7 +40,7 @@
     "clean": "jlpm clean:lib",
     "clean:lib": "rimraf lib tsconfig.tsbuildinfo",
     "clean:lintcache": "rimraf .eslintcache .stylelintcache",
-    "clean:labextension": "rimraf jupyter_mdx/labextension jupyter_mdx/_version.py",
+    "clean:labextension": "rimraf jupyterlab_mdx/labextension jupyterlab_mdx/_version.py",
     "clean:all": "jlpm clean:lib && jlpm clean:labextension && jlpm clean:lintcache",
     "eslint": "jlpm eslint:check --fix",
     "eslint:check": "eslint . --cache --ext .ts,.tsx",
@@ -58,7 +58,9 @@
     "watch:labextension": "jupyter labextension watch ."
   },
   "dependencies": {
-    "@jupyterlab/application": "^4.0.0"
+    "@jupyterlab/application": "^4.0.0",
+    "@jupyterlab/cells": "^4.0.0",
+    "@jupyterlab/notebook": "^4.4.2"
   },
   "devDependencies": {
     "@jupyterlab/builder": "^4.0.0",
@@ -73,6 +75,7 @@
     "eslint-config-prettier": "^8.7.0",
     "eslint-plugin-prettier": "^4.2.1",
     "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
     "npm-run-all": "^4.1.5",
     "prettier": "^2.8.7",
     "rimraf": "^4.4.1",
@@ -96,8 +99,7 @@
     "access": "public"
   },
   "jupyterlab": {
-    "extension": true,
-    "outputDir": "jupyter_mdx/labextension"
+    "extension": true
   },
   "eslintIgnore": [
     "node_modules",
@@ -179,6 +181,9 @@
       "selector-no-vendor-prefix": null,
       "value-no-vendor-prefix": null
     }
+  },
+  "engines": {
+    "jupyterlab": ">=4.0.0 <5.0.0"
   },
   "packageManager": "yarn@4.9.1"
 }

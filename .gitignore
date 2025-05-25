@@ -66,6 +66,12 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Ignore the transient Yarn build state:
+.yarn/build-state.yml
+
+# ignore just the cache:
+.yarn/cache/
+
 # other logs
 npm-debug.log*
 yarn-debug.log*

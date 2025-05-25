@@ -1,0 +1,67 @@
+# This is the Docker file for development builds.
+#
+# To begin developemnt after cloning this repo to your local system,
+# do the following fro mthe root directory of the repo:
+#
+#     docker-compose build jupyter
+#     docker-compose up -d jupyter
+
+# Dockerfile.dev
+FROM python:3.11-slim
+
+# 1) Install system tooling & JupyterLab
+#RUN apt-get update \
+# && apt-get install -y nodejs npm git \
+# you cannot get Yarn 4.x via npm – use Corepack instead
+# && npm install -g yarn@4.9.1 \
+# enable Corepack (bundled with Node 18+) and activate Yarn 4.9.1
+RUN apt-get update \
+ && apt-get install -y nodejs npm git \
+ \
+ # get Corepack (since Debian’s nodejs lacks it) and activate Yarn 4.9.1
+ && npm install -g corepack \
+ && corepack enable \
+ && corepack prepare yarn@4.9.1 --activate \
+ \
+ # Python toolchain
+ && pip install --upgrade pip hatchling \
+ && pip install jupyterlab setuptools wheel
+
+
+
+WORKDIR /home/jovyan/jupyterlab-mdx
+
+# 2) Install Python deps (your extension package)  
+#    We do this early so that pip’s cache can be used.
+#
+# The semantics of COPY are similar to those of the shell cp
+# command.  The last argument is the destination.   All arguments
+# bewteen COPY and the last argument are the sources of the copy.
+# However, when a directory is specified, it copies the entire
+# directory tree akin to `cp -rf`.  The destination ./ is
+# the WORKDIR within the image being build.
+#
+# Aside: it is okay to copy these files into the image
+# even though the entire repository will be mounted into
+# the container overwriting these files.
+#COPY setup.py pyproject.toml package.json jupyterlab_mdx/ ./
+COPY setup.py package.json jupyterlab_mdx/ ./
+
+# fall back to the legacy setuptools-style editable install:
+#RUN pip install --upgrade pip hatchling \
+RUN pip install -e . # --use-feature=legacy-editable
+
+# 3) Install JS deps
+COPY package.json yarn.lock ./
+RUN yarn install
+
+## 4) On container start: rebuild TS → lib/ → labextension → launch
+# For now let's not build the extension and start jupyter lab.
+# Instead log into the container, build the extension and start 
+# jupyter-lab manually.
+#ENTRYPOINT ["bash","-lc","\
+#   yarn build && \
+#   yarn build:labextension:dev && \
+#   jupyter lab --no-browser --ip=0.0.0.0"]
+
+ENTRYPOINT ["bash","-lc","yarn install && yarn dev"]

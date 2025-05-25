@@ -1,0 +1,47 @@
+# This docker-compose.yml lets you spin up the container with your local code
+# mounted as a volume.  You can rebuild the extension without rebuilding the
+# whole image
+#
+# See Dockerfile.dev
+#
+# To begin developemnt after cloning this repo to your local system,
+# do the following fro mthe root directory of the repo:
+#
+#     docker-compose build jupyter
+#     #docker-compose up -d jupyter
+#     docker-compose run --service-ports jupyter
+#
+# The above starts up shell in a running container.
+# Once the container starts:
+#
+#     yarn run build   # transpiles ts -> js
+#     yarn build:labextension:dev
+#
+# Run the unit tests afer it is has built
+#
+#    yarn test
+#
+# Make sure you have exported UID and GID.  For example,
+#
+#     export UID=$(id -u)
+#     export GID=$(id -g)
+
+services:
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: dosirrah/jupyterlab-mdx:dev
+    volumes:
+      - ./:/home/jovyan/jupyterlab-mdx
+    ports:
+      - "8888:8888"
+    environment:
+      JUPYTER_ENABLE_LAB: "yes"
+      NB_UID: ${UID}
+      NB_GID: ${GID}
+    # override the Dockerfile’s ENTRYPOINT with just bash:
+    entrypoint: ["/bin/bash", "-l", "-c"]
+    # give you a prompt
+    command: ["bash"]
+

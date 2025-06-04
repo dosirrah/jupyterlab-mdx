@@ -11,7 +11,7 @@ FROM python:3.11-slim
 
 # 1) Install system tooling & JupyterLab
 #RUN apt-get update \
-# && apt-get install -y nodejs npm git \
+# && apt-get install -y nodejs npm git vim-tiny \
 # you cannot get Yarn 4.x via npm – use Corepack instead
 # && npm install -g yarn@4.9.1 \
 # enable Corepack (bundled with Node 18+) and activate Yarn 4.9.1

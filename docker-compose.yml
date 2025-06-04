@@ -8,18 +8,22 @@
 # do the following fro mthe root directory of the repo:
 #
 #     docker-compose build jupyter
-#     #docker-compose up -d jupyter
+#     #docker-compose up -d jupyter   # use the next line instead.
 #     docker-compose run --service-ports jupyter
 #
 # The above starts up shell in a running container.
-# Once the container starts:
+# The `--service-ports` argument specifies that the ports defined by the
+# named service should be "published" meaning they are bound to port numbers
+# on the localhost.
+#
+# Once the container starts, at the command-prompt inside the container:
 #
 #     yarn run build   # transpiles ts -> js
 #     yarn build:labextension:dev
 #
 # Run the unit tests afer it is has built
 #
-#    yarn test
+#     yarn test
 #
 # Make sure you have exported UID and GID.  For example,
 #

@@ -1,3 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="0" failures="0" errors="0" time="3.144">
+<testsuites name="jest tests" tests="4" failures="0" errors="0" time="2.757">
+  <testsuite name="mdx cross-references" errors="0" failures="0" skipped="0" timestamp="2025-06-04T20:17:56" time="1.843" tests="4">
+    <testcase classname="mdx cross-references toId assembles (name, id) into &quot;name:id&quot;." name="mdx cross-references toId assembles (name, id) into &quot;name:id&quot;." time="0.003">
+    </testcase>
+    <testcase classname="mdx cross-references toId assembles (null, id) to &quot;id&quot;." name="mdx cross-references toId assembles (null, id) to &quot;id&quot;." time="0">
+    </testcase>
+    <testcase classname="mdx cross-references formats labels in &quot;eq&quot; named enumeration inside parentheses" name="mdx cross-references formats labels in &quot;eq&quot; named enumeration inside parentheses" time="0.001">
+    </testcase>
+    <testcase classname="mdx cross-references registers labels from text nodes" name="mdx cross-references registers labels from text nodes" time="0.003">
+    </testcase>
+  </testsuite>
 </testsuites>

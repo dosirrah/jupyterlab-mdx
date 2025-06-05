@@ -2,20 +2,25 @@
 # mounted as a volume.  You can rebuild the extension without rebuilding the
 # whole image
 #
-# See Dockerfile.dev
+#     docker-compose up --build -d
 #
 # To begin developemnt after cloning this repo to your local system,
 # do the following fro mthe root directory of the repo:
 #
-#     docker-compose build jupyter
-#     #docker-compose up -d jupyter   # use the next line instead.
-#     docker-compose run --service-ports jupyter
+#     docker-compose exec jupyter bash
 #
-# The above starts up shell in a running container.
-# The `--service-ports` argument specifies that the ports defined by the
-# named service should be "published" meaning they are bound to port numbers
-# on the localhost.
+#     cd /home/jovyan/jupyterlab-mdx
 #
+# If there are files that you want to test that have been edited since you
+# built the repository then
+#
+#     cp -r /home/joyyan/src/* .
+#     yarn install --immutable   # only if package.json changed; otherwise can skip
+#     yarn run build:lib         # compile TS → lib/
+#     yarn run build:labextension  # bundle into jupyterlab_mdx/labextension/
+#     pip install --no-cache-dir -e .
+#
+##
 # Once the container starts, at the command-prompt inside the container:
 #
 #     yarn run build   # transpiles ts -> js
@@ -24,6 +29,11 @@
 # Run the unit tests afer it is has built
 #
 #     yarn test
+#
+# Once you pass tests, if you want to play with the extension then start up jupyter
+# in the container:
+#
+#     jupyter lab --no-browser --ip=0.0.0.0 --allow-root
 #
 # Make sure you have exported UID and GID.  For example,
 #
@@ -34,18 +44,12 @@ services:
   jupyter:
     build:
       context: .
-      dockerfile: Dockerfile.dev
-    image: dosirrah/jupyterlab-mdx:dev
-    volumes:
-      - ./:/home/jovyan/jupyterlab-mdx
+      dockerfile: Dockerfile
+    image: jupyterlab-mdx:latest
     ports:
       - "8888:8888"
+    user: jovyan
     environment:
       JUPYTER_ENABLE_LAB: "yes"
       NB_UID: ${UID}
       NB_GID: ${GID}
-    # override the Dockerfile’s ENTRYPOINT with just bash:
-    entrypoint: ["/bin/bash", "-l", "-c"]
-    # give you a prompt
-    command: ["bash"]
-

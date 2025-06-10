@@ -9,6 +9,7 @@
     "target": "ES2018",
     "jsx": "react",
     "strict": true,
+    "skipLibCheck": true,
     "resolveJsonModule": true,
     "esModuleInterop": true
   },

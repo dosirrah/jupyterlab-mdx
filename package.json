@@ -39,7 +39,11 @@
     "@types/json-schema":     "^7.0.11"
   },
   "jupyterlab": {
-    "extension": true
+      "extension": true,
+      "outputDir": "jupyterlab_mdx/labextension/jupyterlab-mdx"
   },
-  "packageManager": "yarn@4.9.1"
+  "packageManager": "yarn@4.9.1",
+  "workspaces": [
+    "jupyterlab_mdx/labextension/jupyterlab-mdx"
+  ]
 }

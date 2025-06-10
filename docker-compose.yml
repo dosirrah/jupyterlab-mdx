@@ -1,8 +1,14 @@
 # This docker-compose.yml lets you spin up the container with your local code
 # mounted as a volume.  You can rebuild the extension without rebuilding the
-# whole image
+# whole image.
 #
-#     docker-compose up --build -d
+# This builds the image.
+#
+#     docker-compose build
+#
+# This runs the container in which jupyter-lab executes with the mdx extension.
+#
+#     docker-compose up -d
 #
 # To begin developemnt after cloning this repo to your local system,
 # do the following fro mthe root directory of the repo:
@@ -15,7 +21,7 @@
 # built the repository then
 #
 #     cp -r /home/joyyan/src/* .
-#     yarn install --immutable   # only if package.json changed; otherwise can skip
+#     yarn install               # only if package.json changed; otherwise can skip
 #     yarn run build:lib         # compile TS → lib/
 #     yarn run build:labextension  # bundle into jupyterlab_mdx/labextension/
 #     pip install --no-cache-dir -e .
@@ -35,10 +41,12 @@
 #
 #     jupyter lab --no-browser --ip=0.0.0.0 --allow-root
 #
-# Make sure you have exported UID and GID.  For example,
+# Make sure you have exported UID, GID, and R.  R points
+# at the directory containing all of your repos.  For example,
 #
 #     export UID=$(id -u)
 #     export GID=$(id -g)
+#     export R=$HOME/olemiss/repo
 
 services:
   jupyter:
@@ -49,6 +57,8 @@ services:
     ports:
       - "8888:8888"
     user: jovyan
+    volumes:
+      - ${R}:/home/jovyan/repo
     environment:
       JUPYTER_ENABLE_LAB: "yes"
       NB_UID: ${UID}

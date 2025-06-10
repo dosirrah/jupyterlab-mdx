@@ -32,7 +32,6 @@ dependencies = [
   "jupyterlab>=4.0.0,<5.0.0"
 ]
 
-
 # When you build an sdist, include the prebuilt JS bundle.
 [tool.hatch.build.targets.sdist]
 artifacts = ["jupyterlab_mdx/labextension"]
@@ -43,3 +42,5 @@ exclude = [".github", "binder"]
 [tool.hatch.build.targets.wheel.shared-data]
 "jupyterlab_mdx/labextension" = "share/jupyter/labextensions/jupyterlab-mdx"
 "install.json"                 = "share/jupyter/labextensions/jupyterlab-mdx/install.json"
+"jupyterlab_mdx/labextension/jupyterlab-mdx/package.json"    = "share/jupyter/labextensions/jupyterlab-mdx/package.json"
+"jupyterlab_mdx/labextension/jupyterlab-mdx/static"          = "share/jupyter/labextensions/jupyterlab-mdx/static"

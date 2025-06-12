@@ -12,6 +12,7 @@ module.exports = {
   },
   moduleFileExtensions: [...(baseConfig.moduleFileExtensions || []), 'ts', 'tsx'],
   transformIgnorePatterns: [`/node_modules/(?!(?:${esModules})).+`],
-  modulePathIgnorePatterns: ['<rootDir>/static/'],  // if you have a static folder you’re ignoring
-  collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/**/*.d.ts']
+  modulePathIgnorePatterns: ['<rootDir>/static/'],
+  collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/**/*.d.ts'],
+  testRegex: 'src/__tests__/.*\\.spec\\.ts$'
 };

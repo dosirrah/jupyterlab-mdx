@@ -17,6 +17,7 @@
     "build:labextension": "jupyter labextension build .",
     "build": "npm run build:lib && npm run build:labextension",
     "watch": "tsc -w --sourceMap & jupyter labextension watch .",
+    "lint": "eslint src/**/*.ts",
     "test": "jest --coverage"
   },
   "files": [
@@ -42,8 +43,5 @@
       "extension": true,
       "outputDir": "jupyterlab_mdx/labextension/jupyterlab-mdx"
   },
-  "packageManager": "yarn@4.9.1",
-  "workspaces": [
-    "jupyterlab_mdx/labextension/jupyterlab-mdx"
-  ]
+  "packageManager": "yarn@4.9.1"
 }

@@ -2,6 +2,7 @@
 
 import { INotebookTracker } from '@jupyterlab/notebook';
 import {
+  Cell,
   MarkdownCell,
   isMarkdownCellModel
 } from '@jupyterlab/cells';
@@ -87,84 +88,74 @@ export function scanLabels(tracker: INotebookTracker): void {
 }
 
 
-function rewriteText(textNode: Text): void {
-  const re = /(@|#)([A-Za-z]+:)?([A-Za-z0-9:_\-]+)(!?)/g;
-  const data = textNode.data;
-  const frag = document.createDocumentFragment();
-  let last = 0, m;
+export function attachHooks(cell: Cell, tracker: INotebookTracker) {
+  console.log("attachHooks")
+  if (!(cell instanceof MarkdownCell)) return;
+  if ((cell as any)._xr_hooks_installed) return;
 
-  while ((m = re.exec(data)) !== null) {
-    const [full, sym, enumName, id, bang] = m;
+  let edited = false;
+
+  cell.model.sharedModel.changed.connect(() => {
+    edited = true;
+  });
+
+  cell.renderedChanged.connect(() => {
+    if (cell.rendered && edited) {
+      console.log("cell.renderedChanged callback found edited cell");
+      edited = false;
+      scanLabels(tracker);
+      rerenderDownstream(cell, tracker); // Propagate changes
+
+    }
+  });
+
+  (cell as any)._xr_hooks_installed = true;
+}
+
+function rerenderDownstream(cell: MarkdownCell, tracker: INotebookTracker) {
+  console.log("rerenderDownstream.");
+  const cells = tracker.currentWidget?.content.widgets ?? [];
+  const idx = cells.indexOf(cell);
+
+  for (let i = idx + 1; i < cells.length; i++) {
+    const c = cells[i];
+    if (c instanceof MarkdownCell) {
+      // Trigger re-render by flipping the .rendered state
+      c.rendered = false;
+      c.rendered = true;
+    }
+  }
+}
+
+
+export function preprocessLabels(markdown: string): string {
+  const re = /(@|#)([A-Za-z]+:)?([A-Za-z0-9:_\-]+)(!?)/g;
+
+  return markdown.replace(re, (full, sym, enumName, id, bang) => {
     const name = enumName ? enumName.slice(0, -1) : null;
     const key = toId(name, id);
     const entry = labelMap.get(key);
 
-    frag.appendChild(document.createTextNode(data.slice(last, m.index)));
-    last = m.index + full.length;
+    if (!entry) {
+      return full; // leave unchanged if not found
+    }
+
+    const { n } = entry;
 
     if (sym === '@') {
-      const n = entry?.n ?? '??';
-      const span = document.createElement('span');
-      span.innerHTML = `<a id="${toId(name, id)}">${n}</a>` +
-        `<span style="display:none">\\label{${toId(name, id)}}</span>`;
-      frag.appendChild(span);
+      // Replace with raw number or formatted (e.g., (3)) if taggable
+      return formatLabel(name, n, /* raw= */ false);
     }
 
     if (sym === '#') {
-      const n = entry?.n ?? '??';
-      const label = formatLabel(entry?.name ?? name, n, bang === '!');
-      const a = document.createElement('a');
-      a.href = `#${toId(entry?.name ?? name, id)}`;
-      a.textContent = label;
-      frag.appendChild(a);
+      // Replace with cross-reference (may include prefix like "eq", unless ! present)
+      return formatLabel(name, n, /* raw= */ bang === '!');
     }
-  }
 
-  frag.appendChild(document.createTextNode(data.slice(last)));
-  textNode.parentNode?.replaceChild(frag, textNode);
+    return full;
+  });
 }
 
-function walk(node: Node): void {
-  // recurisively finds the text nodes and calls rewriteText on them.
-  if (node.nodeType === Node.TEXT_NODE) {
-    rewriteText(node as Text);
-  } else {
-    node.childNodes.forEach(walk);
-  }
-}
-
-export function rewriteAll(): void {
-
-  // For jupyter classic, .text_cell_render refers to cells that are
-  // <div class="text_cell_render">.  The div contains the renereded
-  // HTML.
-  //
-  // jupyter lab. renders the markdown to a
-  // <div class="jp-RenderedHTMLCommon jp-RenderedMarkdown">
-  
-  document.querySelectorAll('.text_cell_render, .jp-RenderedHTMLCommon').forEach(walk);
-
-  if ((window as any).MathJax?.typesetPromise) { // MathJax v3.
-    (window as any).MathJax.typesetPromise();
-  } else if ((window as any).MathJax?.Hub?.Queue) {  // MathJax v2.
-    (window as any).MathJax.Hub.Queue(['Typeset', (window as any).MathJax.Hub]);
-  }
-}
-
-let isProcessing = false;
-
-export function processAll(tracker: INotebookTracker): void {
-  console.log("processAll isProcessing=" + isProcessing);
-  if (isProcessing) return;  // Prevent recursion
-
-  isProcessing = true;
-  try {
-    scanLabels(tracker);
-    rewriteAll();
-  } finally {
-    isProcessing = false;  // Ensure flag is cleared even if an error occurs
-  }
-}
 
 
 export {

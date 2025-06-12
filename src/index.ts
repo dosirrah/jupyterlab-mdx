@@ -1,79 +1,79 @@
 import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application';
 import { INotebookTracker } from '@jupyterlab/notebook';
-import { MarkdownCell } from '@jupyterlab/cells';
-import { processAll } from './xr';  // Your main label processing logic
-import { Cell } from '@jupyterlab/cells';
+//import { MarkdownCell } from '@jupyterlab/cells';
+import { attachHooks, preprocessLabels } from './xr';  // Your main label processing logic
+//import { Cell } from '@jupyterlab/cells';
+import { IRenderMimeRegistry, IRenderMime } from '@jupyterlab/rendermime';
+
 
 const plugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyterlab-mdx',
   autoStart: true,
-  requires: [INotebookTracker],
-  activate: (app: JupyterFrontEnd, tracker: INotebookTracker) => {
+  requires: [INotebookTracker, IRenderMimeRegistry],
+  activate: (
+    app: JupyterFrontEnd,
+    tracker: INotebookTracker,
+    rendermime: IRenderMimeRegistry 
+  ) => {
     console.log('JupyterLab extension jupyterlab-mdx is activated!');
 
-    const wireCell = (cell: any) => {
-      if (cell.model?.type !== 'markdown' || cell._mdxWired) return;
-      cell._mdxWired = true;
-
-      // Only call processAll after user-initiated rendering
-      cell.renderedChanged.connect(() => {
-        if ((cell as MarkdownCell).rendered) {
-          console.log("jupyterlab-mdx: Cell re-rendered → processAll()");
-          processAll(tracker);
+    tracker.currentChanged.connect(() => {
+      const notebook = tracker.currentWidget;
+      if (!notebook) return;
+    
+      const panel = notebook.content;
+    
+      // Handle existing cells
+      panel.widgets.forEach(cell => attachHooks(cell, tracker));
+    
+      // Handle future cells
+      panel.model?.cells.changed.connect((_, change) => {
+        if (change.type === 'add') {
+          for (let i = 0; i < change.newValues.length; i++) {
+            const newCell = panel.widgets[change.newIndex + i];
+            attachHooks(newCell, tracker);
+          }
         }
       });
-    };
-
-    const hookNotebook = (panel: any) => {
-      console.log("jupyterlab-mdx: Notebook widget added");
-
-      panel.content.widgets.forEach(wireCell);
-      panel.content.model?.cells.changed.connect(() => {
-        panel.content.widgets.forEach(wireCell);
-      });
-
-      // Wait until all markdown cells are rendered before processing
-      const promises = panel.content.widgets.map((cell: Cell) => {
-        wireCell(cell);
-        if (cell.model?.type !== 'markdown') return Promise.resolve();
-
-        const mdCell = cell as MarkdownCell;
-        return mdCell.rendered
-          ? Promise.resolve()
-          : new Promise<void>(resolve => {
-              const onRendered = () => {
-                mdCell.renderedChanged.disconnect(onRendered);
-                resolve();
-              };
-              mdCell.renderedChanged.connect(onRendered);
-            });
-      });
-
-      Promise.all(promises).then(() => {
-        console.log("jupyterlab-mdx: All markdown cells rendered. Delaying to run processAll.");
-        // HACK.  I need to find a better way to handle this.   Even though
-        // this doesn't happen until all the promises have completed, there
-        // is still a race condition if I call processAll immediately
-        // wherein the DOM has not yet populated when processAll
-        // is called and thus there are no text nodes to update markdown
-        // so I wait a bit.  Arggg....
-        setTimeout(() => {
-          console.log("jupyterlab-mdx: Delayed processAll running now");
-          processAll(tracker);
-        }, 100); // You can increase to 50–100 ms if needed
-      });
-    };
-
-    // Wire up already open notebook
-    if (tracker.currentWidget) {
-      hookNotebook(tracker.currentWidget);
-    }
-
-    // Wire up future notebooks
-    tracker.widgetAdded.connect((_, panel) => {
-      hookNotebook(panel);
     });
-  }
+
+
+    const original = rendermime.getFactory('text/markdown')!;
+    if (!original) {
+      console.warn('⚠️ Could not find the original Markdown renderer');
+      return;
+    }
+    rendermime.removeMimeType('text/markdown');
+    
+    rendermime.addFactory({
+      safe: true,
+      mimeTypes: ['text/markdown'],
+      createRenderer: options => {
+        const renderer = original.createRenderer(options);
+    
+        const origRenderModel = renderer.renderModel.bind(renderer);
+        renderer.renderModel = async (model: IRenderMime.IMimeModel) => {
+          const source = model.data['text/markdown'] as string;
+    
+          // Modify labels in markdown string here
+          const updated = preprocessLabels(source);  // Your label logic
+    
+          // Replace the string before rendering
+          const newModel = {
+            ...model,
+            data: {
+              ...model.data,
+              'text/markdown': updated
+            }
+          };
+          return origRenderModel(newModel);
+        };
+        return renderer;
+      }
+    }, 0);  // Priority = highest
+    
+  } 
+
 };
 
 export default plugin;

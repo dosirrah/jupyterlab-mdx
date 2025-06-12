@@ -1,12 +1,6 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# pyproject.toml  (minimal for a prebuilt JupyterLab 4.x extension)
-# ─────────────────────────────────────────────────────────────────────────────
-
 [build-system]
-# We use Hatchling as our PEP 517 build backend.
-requires = ["hatchling>=1.5.0"]
+requires = ["hatchling>=1.5.0", "jupyterlab>=4.0.0"]
 build-backend = "hatchling.build"
-
 
 [project]
 name = "jupyterlab_mdx"
@@ -14,33 +8,15 @@ version = "0.1.0"
 description = "Markdown extensions with support for cross-references"
 readme = "README.md"
 license = { file = "LICENSE" }
-authors = [
-  { name = "David A. G. Harrison", email = "dosirrah@gmail.com" }
-]
+authors = [{ name = "David A. G. Harrison", email = "dosirrah@gmail.com" }]
 requires-python = ">=3.8"
-keywords = ["jupyter", "jupyterlab", "extension", "mdx", "cross-reference"]
-classifiers = [
-  "Framework :: Jupyter",
-  "Framework :: Jupyter :: JupyterLab :: 4",
-  "Framework :: Jupyter :: JupyterLab :: Extensions",
-  "License :: OSI Approved :: BSD License",
-  "Programming Language :: Python :: 3"
-]
-  
-# At runtime, our Python package depends on JupyterLab 4.x
-dependencies = [
-  "jupyterlab>=4.0.0,<5.0.0"
-]
+dependencies = ["jupyterlab>=4.0.0"]
 
-# When you build an sdist, include the prebuilt JS bundle.
+[project.entry-points."jupyterlab.extensions"]
+jupyterlab-mdx = "jupyterlab_mdx"
+
 [tool.hatch.build.targets.sdist]
 artifacts = ["jupyterlab_mdx/labextension"]
-exclude = [".github", "binder"]
 
-
-# When you build a wheel, copy the JS bundle into JupyterLab’s extension folder.
 [tool.hatch.build.targets.wheel.shared-data]
-"jupyterlab_mdx/labextension" = "share/jupyter/labextensions/jupyterlab-mdx"
-"install.json"                 = "share/jupyter/labextensions/jupyterlab-mdx/install.json"
-"jupyterlab_mdx/labextension/jupyterlab-mdx/package.json"    = "share/jupyter/labextensions/jupyterlab-mdx/package.json"
-"jupyterlab_mdx/labextension/jupyterlab-mdx/static"          = "share/jupyter/labextensions/jupyterlab-mdx/static"
+"jupyterlab_mdx/labextension/jupyterlab-mdx" = "share/jupyter/labextensions/jupyterlab-mdx"

@@ -67,6 +67,8 @@ RUN echo "🔍 Checking Python distribution artifacts..." \
  && test -f dist/*.tar.gz \
  && echo "✅ sdist tarball found"
 
+RUN yarn test
+
 
 # ─────────── STAGE 2: runtime image ───────────
 FROM python:3.11-slim

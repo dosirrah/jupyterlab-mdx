@@ -4,9 +4,10 @@
 FROM node:20-slim AS build-node
 
 # 1. Install Python 3.11 and required tools
+# I added vim, unzip, dos2unix for debugging the build. --Dave
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-       python3.11 python3.11-venv python3-pip curl vim dos2unix nodejs npm \
+       python3.11 python3.11-venv python3-pip curl vim dos2unix nodejs npm unzip \
   && ln -s /usr/bin/python3.11 /usr/local/bin/python \
   && rm -rf /var/lib/apt/lists/*
 
@@ -46,60 +47,31 @@ RUN python -m venv $VENV_DIR \
  && pip install jupyterlab \
  && pip install -e .
 
-# `npm run build` replaces the yarn install below.
-RUN npm run build  
+RUN yarn install && yarn run build:lib && yarn run build:labextension
 
-#RUN yarn install
-#
-#RUN yarn run build:lib \
-# && jupyter labextension build . \
-#      --output jupyterlab_mdx/labextension/jupyterlab-mdx
+RUN python -m hatchling build
 
-#&& yarn run build:labextension
+# Confirm core files were built
+RUN echo "🔍 Checking labextension build output..." \
+ && test -f jupyterlab_mdx/labextension/jupyterlab-mdx/package.json \
+ && echo "✅ package.json found" \
+ && test -f jupyterlab_mdx/labextension/jupyterlab-mdx/static/remoteEntry.*.js \
+ && echo "✅ remoteEntry.*.js found" \
+ && test -f jupyterlab_mdx/labextension/jupyterlab-mdx/static/style.js \
+ && echo "✅ style.js found"
 
-# Generate install.json in the correct directory
-#RUN cd jupyterlab_mdx/labextension/jupyterlab-mdx \
-#  && jupyter labextension build . \
-#  && echo "✅ install.json generated" \
-#  && ls install.json
-
-
-## generate the install.json manifest into the extension folder
-#RUN jupyter labextension init jupyterlab_mdx/labextension/jupyterlab-mdx
-#
-## Stage 1, right after the JS build:
-#RUN python -m hatchling build
-
-## At this point, you should have:
-##  - lib/             (compiled JS)
-##  - jupyterlab_mdx/labextension/jupyterlab-mdx/  (prebuilt bundle with install.json and static/)
-##  - a Python venv with jupyterlab and your package installed
-
-#RUN echo "🔍 Checking labextension build output..." \
-#  && ls -R jupyterlab_mdx/labextension \
-#  && test -f jupyterlab_mdx/labextension/install.json \
-#  && echo "✅ install.json found"
-#
-#RUN test -f jupyterlab_mdx/labextension/package.json \
-#  && echo "✅ package.json found"
-#
-#RUN test -f jupyterlab_mdx/labextension/static/index.js \
-#  && echo "✅ static/index.js found"
-
-
-## 5) Build the Python wheel — this step respects the shared-data config in pyproject.toml
-## 🛠️ Build wheel from this package (includes labextension via shared-data)
-#RUN echo "🛠️ Building wheel using hatch..." \
-#    && /venv/bin/hatch build \
-#    && ls -lh dist/ \
-#    && test -f dist/*.whl \
-#    && echo "✅ Wheel created."
+# Confirm wheel and sdist were built
+RUN echo "🔍 Checking Python distribution artifacts..." \
+ && test -f dist/*.whl \
+ && echo "✅ wheel found" \
+ && test -f dist/*.tar.gz \
+ && echo "✅ sdist tarball found"
 
 
 # ─────────── STAGE 2: runtime image ───────────
 FROM python:3.11-slim
 
-# 6) Install just what we need at runtime:
+# 1. Install just what we need at runtime:
 #    - vim-tiny → gives us “vi” inside the container
 #    - ca-certificates, git, curl → in case you want to clone or curl
 #    Node.js & npm are NOT strictly required at runtime, because the extension is already built.
@@ -110,50 +82,34 @@ RUN apt-get update \
          git \
          curl \
          vim-tiny \
-    && rm -rf /var/lib/apt/lists/* \
-    \
-    # Create a non-root user "jovyan" to run Jupyter
-    && useradd --create-home --shell /bin/bash jovyan \
-    && chown -R jovyan: /home/jovyan
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /home/jovyan/jupyterlab-mdx
+
+# 2. Create a non-root user "jovyan" to run Jupyter
+RUN useradd --create-home --shell /bin/bash jovyan
 USER jovyan
+WORKDIR /home/jovyan
 
-# Copy the venv from the build stage to the same path it lived there
-COPY --chown=jovyan:jovyan --from=build-node /home/jovyan/.venv /home/jovyan/.venv
+# 3. Set up venv
+ENV VENV_DIR=/home/jovyan/.venv
+ENV PATH="$VENV_DIR/bin:${PATH}"
 
-# Make sure python/jupyter come from that venv
-ENV PATH="/home/jovyan/.venv/bin:${PATH}"
+RUN python -m venv /home/jovyan/.venv && \
+    /home/jovyan/.venv/bin/pip install --upgrade pip setuptools wheel jupyterlab
 
-# 7) Copy only the built artifacts and the Python venv from build-node
-#COPY --chown=jovyan:jovyan --from=build-node /home/jovyan/jupyterlab-mdx/ ./
-#COPY --chown=jovyan:jovyan --from=build-node /venv /venv
+# 4. Copy only the built wheel from Stage 1
+COPY --chown=jovyan:jovyan --from=build-node /home/jovyan/jupyterlab-mdx/dist/*.whl /tmp/
 
-# 8) Prepend /venv/bin so "python" and "jupyter" point to the venv’s executables
+# 5. Install the wheel (your extension)
+RUN /home/jovyan/.venv/bin/python -m pip install /tmp/*.whl
 
-#ENV PATH="/venv/bin:${PATH}"
+# 6. ✅ Sanity check
+RUN test -f /home/jovyan/.venv/share/jupyter/labextensions/jupyterlab-mdx/package.json \
+    && echo "✅ Wheel installed labextension files as expected"
+RUN jupyter labextension list && echo "✅ Extension is registered"
 
-# 9) Install the built wheel into the runtime Python env
-COPY --chown=jovyan:jovyan --from=build-node /home/jovyan/jupyterlab-mdx/dist/*.whl ./
-
-RUN echo "📦 Installing wheel in final container..." \
-    && pip install jupyterlab_mdx-*.whl \
-    && echo "✅ Wheel installed."
-
-# 10) Confirm labextension is registered and placed in Jupyter's extension dir
-RUN echo "🔍 Checking JupyterLab extensions..." \
-    && jupyter labextension list \
-    || (echo "❌ Extension not registered!" && exit 1)
-
-RUN echo "📂 Verifying final labextension placement..." \
-    && ls -l /venv/share/jupyter/labextensions/jupyterlab-mdx \
-    && test -f /venv/share/jupyter/labextensions/jupyterlab-mdx/install.json \
-    && echo "✅ install.json present." \
-    && test -f /venv/share/jupyter/labextensions/jupyterlab-mdx/static/index.js \
-    && echo "✅ JS bundle present."
-
-# 11) Expose JupyterLab’s port
-EXPOSE 8888
-
-# 12) Default command: launch JupyterLab (no browser, no token)
+# 8. Default command: launch JupyterLab (no browser, no token)
 CMD ["jupyter", "lab", "--ip=0.0.0.0", "--no-browser", "--ServerApp.token=''", "--NotebookApp.notebook_dir=/home/jovyan/repo"]
+
+# To test environment.
+#CMD ["bash"]

@@ -4,16 +4,19 @@
 
 import {
   scanLabels,
-  //rewriteAll,
-  labelMap,
-  enumCounters,
-  toId,
-  formatLabel,
-  //processAll
+  preprocessLabels,
 } from '../xr';
 
-import { INotebookTracker } from '@jupyterlab/notebook';
+import { __testExports__ } from '../xr';
+const { labelMap, toId, formatLabel, analyzeMarkdown } = __testExports__;
+
 import { MarkdownCell } from '@jupyterlab/cells';
+import { NotebookPanel } from '@jupyterlab/notebook';
+import { INotebookTracker } from '@jupyterlab/notebook';
+import { CellModel } from '@jupyterlab/cells';
+import { Notebook } from '@jupyterlab/notebook';
+import { NotebookModel } from '@jupyterlab/notebook';
+import { UUID } from '@lumino/coreutils';
 
 
 // A bare‐bones “cell” that looks enough like a MarkdownCell
@@ -28,13 +31,27 @@ class DummyCell {
 // And pretend it’s a MarkdownCell:
 Object.setPrototypeOf(DummyCell.prototype, MarkdownCell.prototype);
 
+/**
+ * Creates a mock INotebookTracker with dummy MarkdownCells.
+ * @param texts - An array of strings, each representing a cell’s source text.
+ */
+export function makeMockTracker(texts: string[]): INotebookTracker {
+  const cells = texts.map(t => new DummyCell(t));
+  const tracker = {
+    currentWidget: {
+      content: {
+        widgets: cells
+      }
+    }
+  };
+  return tracker as unknown as INotebookTracker;
+}
 
 
 describe('mdx cross-references', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
     labelMap.clear();
-    enumCounters.clear();
   });
 
   it('toId assembles (name, id) into "name:id".', () => {
@@ -53,38 +70,21 @@ describe('mdx cross-references', () => {
   });
   
   it('registers labels from text nodes', () => {
-    // build a fake tracker
-    const fakeTracker = {
-      currentWidget: {
-        content: {
-          widgets: [
-            new DummyCell('See @foo and @bar.')
-          ]
-        }
-      }
-    } as unknown as INotebookTracker;
-  
-    scanLabels(fakeTracker);
+    const tracker = makeMockTracker(['See @foo and @bar.']);  
+    scanLabels(tracker);
     
     expect(labelMap.has('foo')).toBe(true);
     expect(labelMap.get('foo')).toEqual({ name: null, id: 'foo', n: 1 });
     expect(labelMap.get('bar')).toEqual({ name: null, id: 'bar', n: 2 });
   });
 
-/*
+
   it('registers labels with named enumeration "eq"', () => {
-    const container = document.createElement('div');
-    container.className = 'jp-RenderedHTMLCommon';
-  
-    const para = document.createElement('p');
-    para.appendChild(document.createTextNode(
-      'Equation @eq:alpha and again @eq:beta.'));
-  
-    container.appendChild(para);
-    document.body.appendChild(container);
-  
-    scanLabels();
-  
+    const tracker = makeMockTracker([
+          'Equation @eq:alpha and again @eq:beta.',
+          'And also @eq:beta and @fig:gamma']);
+    scanLabels(tracker);
+    
     expect(labelMap.has('eq:alpha')).toBe(true);
     expect(labelMap.get('eq:alpha')).toEqual({ name: 'eq', id: 'alpha', n: 1 });
     expect(labelMap.get('eq:beta')).toEqual({ name: 'eq', id: 'beta', n: 2 });
@@ -92,179 +92,64 @@ describe('mdx cross-references', () => {
   });
 
   it('does not double-count repeated labels', () => {
-    const container = document.createElement('div');
-    container.className = 'jp-RenderedHTMLCommon';
-  
-    const para = document.createElement('p');
-    para.appendChild(document.createTextNode(
-      '@foo and again @foo'));
-  
-    container.appendChild(para);
-    document.body.appendChild(container);
+    const tracker = makeMockTracker(['@foo and again @foo']);
 
-    scanLabels();
+    scanLabels(tracker);
 
     expect(labelMap.get('foo')?.n).toBe(1);
-    expect(enumCounters.get('_global')).toBe(1);
   });
 
-  it('rewrites refs into links and labels', () => {
-    const container = document.createElement('div');
-    container.className = 'jp-RenderedHTMLCommon';
-  
-    const para = document.createElement('p');
-    para.appendChild(document.createTextNode(
-      'This is @foo and #foo.'));
-  
-    container.appendChild(para);
-    document.body.appendChild(container);
-
-    processAll();
-
-    const anchor = container.querySelector('a[id="foo"]');
-    expect(anchor).not.toBeNull();
-    expect(anchor?.textContent).toBe('1');
-
-    const href = container.querySelector('a[href="#foo"]');
-    expect(href).not.toBeNull();
-    expect(href?.textContent).toBe('1');
-  });
-
-  it('renders TAGGABLE names with parentheses', () => {
-    const container = document.createElement('div');
-    container.className = 'jp-RenderedHTMLCommon';
-  
-    const para = document.createElement('p');
-    para.appendChild(document.createTextNode(
-      'Equation: @eq:one and reference: #eq:one.'));
-  
-    container.appendChild(para);
-    document.body.appendChild(container);
-  
-    processAll();
-  
-    const anchor = container.querySelector('a[id="eq:one"]');
-    expect(anchor?.textContent).toBe('1');
-  
-    const href = container.querySelector('a[href="#eq:one"]');
-    expect(href?.textContent).toBe('(1)');
-  });
 
   it('renders references to labels defined later in the file.', () => {
-    const container = document.createElement('div');
-    container.className = 'jp-RenderedHTMLCommon';
-  
-    const para = document.createElement('p');
-    para.appendChild(document.createTextNode(
-      `In section #life we discuss life, love, and paydays.
+    const markdown = `In section #life we discuss life, love, and paydays.
 
-## @life. Life`));
+## @life. Life`
+    const tracker = makeMockTracker([markdown]);
 
-    container.appendChild(para);
-    document.body.appendChild(container);
+    scanLabels(tracker);
 
-    scanLabels();
-
-    expect(labelMap.get('life')?.n).toBe(1);
-    expect(enumCounters.get('_global')).toBe(1);
-
-    rewriteAll();
-
-    const anchor = container.querySelector('a[id="life"]');
-    expect(anchor).not.toBeNull();
-    expect(anchor?.textContent).toBe('1');
-
-    const href = container.querySelector('a[href="#life"]');
-    expect(href).not.toBeNull();
-    expect(href?.textContent).toBe('1');
-  
+    const result = preprocessLabels(markdown);
+    expect(result).toContain('section 1');
+    expect(result).toContain('## 1. Life');
   });
   
   it('renders references to undefined labels with ??', () => {
-    const container = document.createElement('div');
-    container.className = 'jp-RenderedHTMLCommon';
-  
-    const para = document.createElement('p');
-    para.appendChild(document.createTextNode(
-      'In section #foo'));
 
-    container.appendChild(para);
-    document.body.appendChild(container);
+    const result = preprocessLabels('In section #foo');
 
-    processAll();
-
-    const href = container.querySelector('a[href="#foo"]');
-    expect(href).not.toBeNull();
-    expect(href?.textContent).toBe('??');
+    expect(result).toEqual('In section ??');
   });
 
   it('renders references to labels in different cells', () => {
-    const container = document.createElement('div');
-    container.className = 'jp-RenderedHTMLCommon';
+
+    const markdown = ['In section #foo', '## @foo Foo'];
+    const tracker = makeMockTracker(markdown);
+
+    scanLabels(tracker);
+    let result = preprocessLabels(markdown[0]);
+
+    expect(result).toEqual('In section 1');
     
-    const para = document.createElement('p');
-    para.appendChild(document.createTextNode(
-      'In section #foo'));
-    
-    container.appendChild(para);
-    document.body.appendChild(container);
-
-    const container2 = document.createElement('div');
-    container2.className = 'jp-RenderedHTMLCommon';
-  
-    const para2 = document.createElement('p');
-    para2.appendChild(document.createTextNode(
-      '## @foo Foo'));
-
-    container2.appendChild(para2);
-    document.body.appendChild(container2);
-
-    processAll();
-
-    const href = container.querySelector('a[href="#foo"]');
-    expect(href).not.toBeNull();
-    expect(href?.textContent).toBe('1');
-
-    const anchor = container2.querySelector('a[id="foo"]');
-    expect(anchor).not.toBeNull();
-    expect(anchor?.textContent).toBe('1');
+    result = preprocessLabels(markdown[1]);
+    expect(result).toEqual('## 1 Foo');
 
   });
-  
 
   it('renders equations with tags.', () => {
-    const container = document.createElement('div');
-    container.className = 'jp-RenderedHTMLCommon';
-  
-    const para = document.createElement('p');
-    para.appendChild(document.createTextNode(
-      '$$\int_0^10 x^2 dx \tag{@eq:one}'));
+    const markdown = '$$\int_0^10 x^2 dx \tag{@eq:one}'
+    const tracker = makeMockTracker([markdown]);
 
-    container.appendChild(para);
-    document.body.appendChild(container);
-
-    scanLabels();
+    scanLabels(tracker);
 
     expect(labelMap.has('eq:one')).toBe(true);
     expect(labelMap.get('eq:one')).toEqual({ name: 'eq', id: 'one', n: 1 });
 
-    rewriteAll();
-
-    const anchor = container.querySelector('a[id="eq:one"]');
-    expect(anchor).not.toBeNull();
-    expect(anchor?.textContent).toBe('1');
-
-
+    const result = preprocessLabels(markdown);
+    expect(result).toEqual('$$\int_0^10 x^2 dx \tag{1}');
   });
 
   it('keeps enumerations independent from each other.', () => {
-    const container = document.createElement('div');
-    container.className = 'jp-RenderedHTMLCommon';
-  
-    const para = document.createElement('p');
-
-    para.appendChild(document.createTextNode(
-      `
+    const markdown = [`
        Reference #bar
        Reference before labelled #ex:foo
        @foo Foo
@@ -273,26 +158,13 @@ describe('mdx cross-references', () => {
        @foo foo
        @a:foo a:foo
 
-      `));
-
-
-    container.appendChild(para);
-    document.body.appendChild(container);
-    
-    const container2 = document.createElement('div');
-    container2.className = 'jp-RenderedHTMLCommon';
-    
-    const para2 = document.createElement('p');
-    para2.appendChild(document.createTextNode(
-      `@bar bar
+      `, `@bar bar
        @ex:foo foo
-      `));
+      `];
+    const tracker = makeMockTracker(markdown);
 
-    container2.appendChild(para2);
-    document.body.appendChild(container2);
-
-    scanLabels();
-
+    scanLabels(tracker);
+    
     expect(labelMap.has('bar')).toBe(true);
     expect(labelMap.get('bar')).toEqual({ name: null, id: 'bar', n: 2 });
     
@@ -311,6 +183,57 @@ describe('mdx cross-references', () => {
     expect(labelMap.has('a:foo')).toBe(true);
     expect(labelMap.get('a:foo')).toEqual({ name: 'a', id: 'foo', n: 1 });
   });
-*/
+
+  it('finds labels.', () => {
+    const markdown = `
+      @foo Foo
+      `;
+
+    const meta = analyzeMarkdown(markdown);
+
+    expect(meta.labelsDefined.has("foo")).toBe(true);
+    expect(meta.labelsReferenced.size).toEqual(0);
+
+  });
+
+  it('finds labels in equations.', () => {
+    const markdown = `
+      $$x \tax{@eq:one}$$
+      `;
+
+    const meta = analyzeMarkdown(markdown);
+
+    expect(meta.labelsDefined.has("eq:one")).toBe(true);
+    expect(meta.labelsReferenced.size).toEqual(0);
+
+  });
+
+  it('finds labels in references.', () => {
+    const markdown = `
+      In section #bar we explain.
+      `;
+
+    const meta = analyzeMarkdown(markdown);
+
+    expect(meta.labelsDefined.size).toEqual(0);
+    expect(meta.labelsReferenced.size).toEqual(1);
+    expect(meta.labelsReferenced.has("bar")).toBe(true);
+  });
+
+  it('finds labels when referenced and defined', () => {
+    const markdown = `
+      In section #bar we explain.
+
+      # Section @bar
+      `;
+
+    const meta = analyzeMarkdown(markdown);
+
+    expect(meta.labelsDefined.size).toEqual(1);
+    expect(meta.labelsReferenced.size).toEqual(1);
+    expect(meta.labelsDefined.has("bar")).toBe(true);
+    expect(meta.labelsReferenced.has("bar")).toBe(true);
+  });
+
 
 });

@@ -1,4 +1,16 @@
 # Dockerfile (two‐stage: build TS+Python → runtime with vim)
+#
+# Better yet use docker compose.
+#
+#   docker-compose up
+#
+# To just want to build an image that builds jupyterlab-mdx::
+#   docker build -t jupyterlab-mdx:latest .
+#
+# To run jupyter lab with mdx plugin,
+#
+#   docker run --rm -it jupyterlab-mdx:latest bash
+#
 
 # --------- STAGE 1: build JS & Python ----------
 FROM node:20-slim AS build-node

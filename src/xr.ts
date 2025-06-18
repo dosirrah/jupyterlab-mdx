@@ -12,8 +12,8 @@ import { ILatexTypesetter } from '@jupyterlab/rendermime';
 
 
 type CellXRMeta = {
-  labelsDefined: Set<string>;     // e.g. {"eq:foo", "eq:bar", "goo"}
-  labelsReferenced: Set<string>;  // e.g. {"eq:foo", "fig:baz"}
+  labelsDefined: Set<string>;     // e.g. ["eq:foo", "eq:bar", "goo"]
+  labelsReferenced: Set<string>;  // same kinds of labels as labelsDefined.
 };
 
 export interface MarkdownCellWithXR extends MarkdownCell {
@@ -51,9 +51,16 @@ function formatLabel(name: string | null, n: number | string, raw = false): stri
   return raw ? `${n}` : name ? `${name} ${n}` : `${n}`;
 }
 
-function setsEqual<T>(a?: Set<T>, b?: Set<T>): boolean {
-  if (!a || !b || a.size !== b.size) return false;
-  for (const x of a) if (!b.has(x)) return false;
+function setsEqualOrdered(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  const aIter = a.values();
+  const bIter = b.values();
+  let aNext, bNext;
+
+  while (!(aNext = aIter.next()).done && !(bNext = bIter.next()).done) {
+    if (aNext.value !== bNext.value) return false;
+  }
+
   return true;
 }
 
@@ -164,7 +171,10 @@ export function updateLabelMap(
   edited: MarkdownCellWithXR,
   allCells: MarkdownCellWithXR[]
 ): Set<string> {
+  //console.log("1 updateLabelMap");
   const newMeta = analyzeMarkdown(edited.model.sharedModel.getSource());
+
+  //console.log("2 updateLabelMap");
 
   // Treat missing xrMeta as empty
   const oldMeta = edited.xrMeta ?? {
@@ -177,7 +187,8 @@ export function updateLabelMap(
   const oldLabels = oldMeta.labelsDefined;
   const newLabels = newMeta.labelsDefined;
 
-  const labelsChanged = !setsEqual(oldLabels, newLabels);
+  const labelsChanged = !setsEqualOrdered(oldLabels, newLabels);  // order matters.
+  //console.log("3 updateLabelMap labelsChanged", labelsChanged);
 
   // If labels didn't change then we can safely return.  If only refs changed there is no
   // need to update the labelMap and the cell will still properly render even if there are new

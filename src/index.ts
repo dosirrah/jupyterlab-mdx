@@ -2,7 +2,8 @@ import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application'
 import { INotebookTracker, Notebook, NotebookActions } from '@jupyterlab/notebook';
 import { MarkdownCell } from '@jupyterlab/cells';
 import { scanLabels, preprocessLabels, updateLabelMap } from './xr';
-import { rerenderAffected, rerenderAllMarkdown, MarkdownCellWithXR } from './xr'; 
+import { rerenderAffected, rerenderAllMarkdown, MarkdownCellWithXR } from './xr';
+import { gDuplicateLabels } from './xr';
 import { IRenderMimeRegistry, IRenderMime } from '@jupyterlab/rendermime';
 import { ILatexTypesetter } from '@jupyterlab/rendermime';
 import { ISessionContext } from '@jupyterlab/apputils';
@@ -36,12 +37,13 @@ function wrapNotebookActions(tracker: INotebookTracker,
       const editedCell = activeCell instanceof MarkdownCell
                            ? (activeCell as MarkdownCell) : null;
         
-      let changedLabels: Set<string> | undefined;
+      let changedLabels: Set<string> = new Set<string>();
+      let duplicateLabels: Set<string> = new Set<string>();
 
       //console.log("a4 editedCell", editedCell);
       if (editedCell) {
         //console.log("a5 updateLabelMap", editedCell);
-        changedLabels = updateLabelMap(editedCell as MarkdownCellWithXR, allCells);
+        [changedLabels, duplicateLabels] = updateLabelMap(editedCell as MarkdownCellWithXR, allCells);
         //console.log("a6 changedLabels ", changedLabels);
       }
 
@@ -51,7 +53,7 @@ function wrapNotebookActions(tracker: INotebookTracker,
       // Run optimized logic if the active cell was Markdown
       if (changedLabels && changedLabels.size !== 0) {
         console.log("Calling rerenderAffected");
-        rerenderAffected(allCells, changedLabels, rendermime, latex);
+        rerenderAffected(allCells, changedLabels, duplicateLabels, rendermime, latex);
       } else {
         console.log("a8 ⚠️ No label changes detected or not a Markdown cell. Skipping rerender.");
       }
@@ -100,7 +102,7 @@ function installMarkdownRenderer(tracker: INotebookTracker,
           //console.log("2 jupyterlab-mdx: render markdown cell source_markdown: " + source_markdown);
 
           // Modify labels in markdown string here
-          const updated = preprocessLabels(source_markdown);  // Your label logic
+          const updated = preprocessLabels(source_markdown, gDuplicateLabels); // Your label logic
           //console.log("3 jupterlab-mdex: render markdown updated: " + updated);
     
           // Replace the string before rendering

@@ -51,7 +51,7 @@ RUN mkdir -p node_modules/.bin \
 
 ENV PATH="/home/jovyan/jupyterlab-mdx/node_modules/.bin:${PATH}"
 
-# 10) Prepare Python venv & install JupyterLab + your package
+# 7. Prepare Python venv & install JupyterLab + jupyterlab-mdx package
 ENV VENV_DIR=/home/jovyan/.venv
 ENV PATH="$VENV_DIR/bin:${PATH}"
 RUN python -m venv $VENV_DIR \
@@ -63,7 +63,7 @@ RUN yarn install && yarn run build:lib && yarn run build:labextension
 
 RUN python -m hatchling build
 
-# Confirm core files were built
+# 8. Confirm core files were built
 RUN echo "🔍 Checking labextension build output..." \
  && test -f jupyterlab_mdx/labextension/jupyterlab-mdx/package.json \
  && echo "✅ package.json found" \

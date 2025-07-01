@@ -1,6 +1,5 @@
 # This docker-compose.yml lets you spin up the container with your local code
-# mounted as a volume.  You can rebuild the extension without rebuilding the
-# whole image.
+# mounted as a volume. 
 #
 # This builds the image.
 #

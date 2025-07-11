@@ -30,11 +30,12 @@ class DummyCell {
 // And pretend it’s a MarkdownCell:
 Object.setPrototypeOf(DummyCell.prototype, MarkdownCell.prototype);
 
+
 /**
  * Creates a mock INotebookTracker with dummy MarkdownCells.
  * @param texts - An array of strings, each representing a cell’s source text.
  */
-export function makeMockTracker(texts: string[]): INotebookTracker {
+function makeMockTracker(texts: string[]): INotebookTracker {
   const cells = texts.map(t => new DummyCell(t));
   const tracker = {
     currentWidget: {

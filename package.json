@@ -29,7 +29,8 @@
     "@jupyterlab/application": "^4.0.0",
     "@jupyterlab/cells":       "^4.0.0",
     "@jupyterlab/notebook":    "^4.0.0",
-    "@jupyterlab/rendermime": "^4.0.0"
+    "@jupyterlab/rendermime": "^4.0.0",
+    "bibtex-parse-js": "^0.0.24"
   },
   "devDependencies": {
     "@jupyterlab/builder":    "^4.0.0",

@@ -1,12 +1,17 @@
 import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application';
-import { INotebookTracker, Notebook, NotebookActions } from '@jupyterlab/notebook';
+import { INotebookTracker, Notebook, NotebookActions, NotebookPanel } from '@jupyterlab/notebook';
 import { MarkdownCell } from '@jupyterlab/cells';
 import { scanLabels, preprocessLabels, updateLabelMap } from './xr';
-import { rerenderAffected, rerenderAllMarkdown, MarkdownCellWithXR } from './xr';
+import { rerenderAffected, rerenderAllMarkdown } from './render';
+import { MarkdownCellWithXR } from './xr';
 import { gDuplicateLabels } from './xr';
+import { gCitationOrder } from './bib';
+import { scanCitations, preprocessCitations, updateCitationMap,
+         injectBibliography, updateBibliography, generateBibliography } from './bib';
 import { IRenderMimeRegistry, IRenderMime } from '@jupyterlab/rendermime';
 import { ILatexTypesetter } from '@jupyterlab/rendermime';
 import { ISessionContext } from '@jupyterlab/apputils';
+import { ContentsManager } from '@jupyterlab/services';
 
 function wrapNotebookActions(tracker: INotebookTracker,
                              rendermime: IRenderMimeRegistry,
@@ -39,21 +44,39 @@ function wrapNotebookActions(tracker: INotebookTracker,
         
       let changedLabels: Set<string> = new Set<string>();
       let duplicateLabels: Set<string> = new Set<string>();
+      let changedCitations = new Set<string>();
+      let bibChanged = false;   // underlying .bibtex file changed or was it previously unloaded?
 
       //console.log("a4 editedCell", editedCell);
       if (editedCell) {
         //console.log("a5 updateLabelMap", editedCell);
         [changedLabels, duplicateLabels] = updateLabelMap(editedCell as MarkdownCellWithXR, allCells);
         //console.log("a6 changedLabels ", changedLabels);
+        changedCitations = updateCitationMap(
+          editedCell as MarkdownCellWithXR,
+          allCells as MarkdownCellWithXR[]
+        );
+        
+        const notebookPath = session?.path ?? '';
+        bibChanged = await updateBibliography(editedCell as MarkdownCellWithXR, notebookPath);
       }
 
       // Execute the action
       const result = await orig.call(this, notebook, session);
 
       // Run optimized logic if the active cell was Markdown
-      if (changedLabels && changedLabels.size !== 0) {
+      if (changedLabels.size || changedCitations.size) {
+
         console.log("Calling rerenderAffected");
-        rerenderAffected(allCells, changedLabels, duplicateLabels, rendermime, latex);
+        rerenderAffected(
+          allCells,
+          changedLabels,
+          duplicateLabels,
+          changedCitations,
+          bibChanged,
+          rendermime,
+          latex
+        );
       } else {
         console.log("a8 ⚠️ No label changes detected or not a Markdown cell. Skipping rerender.");
       }
@@ -98,23 +121,31 @@ function installMarkdownRenderer(tracker: INotebookTracker,
         const origRenderModel = renderer.renderModel.bind(renderer);
         renderer.renderModel = async (model: IRenderMime.IMimeModel) => {
           console.log("jupyterlab-mdx: render markdown cell");
-          const source_markdown = model.data['text/markdown'] as string;
-          //console.log("2 jupyterlab-mdx: render markdown cell source_markdown: " + source_markdown);
+          let md = model.data['text/markdown'] as string;
+          //console.log("2 jupyterlab-mdx: render markdown cell source_markdown: " + md);
 
           // Modify labels in markdown string here
-          const updated = preprocessLabels(source_markdown, gDuplicateLabels); // Your label logic
-          //console.log("3 jupterlab-mdex: render markdown updated: " + updated);
-    
+          md = preprocessLabels(md, gDuplicateLabels);
+          //console.log("3 jupterlab-mdex: render markdown after preprocessLabels: " + md);
+          
+          // Process citations (^KEY)
+          md = preprocessCitations(md);
+          //console.log("4 jupterlab-mdex: render markdown after preprocessCitations: " + md);
+
+          if (/^::: *bibliography/m.test(md)) {
+             md = generateBibliography(md);
+          }
+
           // Replace the string before rendering
           const newModel: IRenderMime.IMimeModel = {
             ...model,
             data: {
               ...model.data,
-              'text/markdown': updated
+              'text/markdown': md
             },
             metadata: model.metadata ?? {}   // The ?? operator returns the rhs if the lhs is null.
           };
-          //console.log("4 jupyterlab-mex: render markdown cell calling original renderer.");
+          //console.log("5 jupyterlab-mex: render markdown cell calling original renderer.");
 
           return origRenderModel(newModel);
         };
@@ -161,8 +192,49 @@ const plugin: JupyterFrontEndPlugin<void> = {
       await notebookPanel.context.ready;
       console.log("ac4  notebook loaded.");
 
+      // create a bib markdwon cell if one doesn't already exist
+      // and load the bibtex file.
+      // HERE: find nearest .bib file recursively from current notebook directory
+      const cm = new ContentsManager();
+      const notebookPath = notebookPanel.context.path;
+      const defaultBib = notebookPath.includes('/')
+        ? notebookPath.slice(0, notebookPath.lastIndexOf('/'))
+        : '';
+
+      async function findBib(dirPath: string): Promise<string | null> {
+        try {
+          const listing = await cm.get(dirPath);
+          for (const item of (listing.content as any[])) {
+            if (item.type === 'file' && item.name.endsWith('.bib')) {
+              return dirPath ? `${dirPath}/${item.name}` : item.name;
+            }
+          }
+          for (const item of (listing.content as any[])) {
+            if (item.type === 'directory') {
+              const sub = dirPath ? `${dirPath}/${item.name}` : item.name;
+              const found = await findBib(sub);
+              if (found) return found;
+            }
+          }
+        } catch (e) {
+          console.warn(`Error searching for .bib in ${dirPath}:`, e);
+        }
+        return null;
+      }
+
       // Initial full scan and render
       scanLabels(tracker);
+
+      scanCitations(tracker);
+
+      if (gCitationOrder.length > 0) {
+        injectBibliography(
+          tracker,
+          notebookPanel,
+          defaultBib
+        );
+      }
+
       //console.log("ac5 jupyterlab-mdx rerenderAllMarkdown");
       await rerenderAllMarkdown(tracker, rendermime, latex);
 

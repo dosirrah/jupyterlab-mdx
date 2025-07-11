@@ -1,0 +1,575 @@
+/**
+ * @jest-environment jsdom
+ */
+
+import {
+  scanCitations,
+  preprocessCitations,
+  updateCitationMap,
+  updateBibliography,
+  gCitationEntries
+} from '../bib';
+import { __testExports__ } from '../bib';
+const {
+  gCitationOrder,
+  gCitationMap,
+  _bibCache,
+  analyzeCitations,
+  loadBibEntries
+} = __testExports__;
+
+import { MarkdownCell } from '@jupyterlab/cells';
+import { ContentsManager, Contents } from '@jupyterlab/services';
+import { INotebookTracker, NotebookPanel } from '@jupyterlab/notebook';
+
+// Polyfill Request, Response, and Headers in test environment for
+// @jupyterlab/services. I was unfamiliar with `global`.  In Node or
+// JSDOM, `global` is the name of the root‐level object that holds
+// all globals.
+;(global as any).Request = class {};
+;(global as any).Response = class { constructor(public body: any) {} };
+;(global as any).Headers = class {};
+
+
+// Minimal dummy cell implementing MarkdownCell enough for tests
+class DummyCell {
+  // hold the text internally
+  private _text: string;
+
+  // expose sharedModel with getSource/setSource
+  model: {
+    sharedModel: {
+      getSource: () => string;
+      setSource: (newSrc: string) => void;
+    };
+  };
+
+  constructor(text: string) {
+    this._text = text;
+    this.model = {
+      sharedModel: {
+        getSource: () => this._text,
+        setSource: src => { this._text = src; }
+      }
+    };
+  }
+}
+Object.setPrototypeOf(DummyCell.prototype, MarkdownCell.prototype);
+
+// Helper to create a bibliography cell with a given src
+function makeCell(src: string): MarkdownCell {
+  const md = `::: bibliography
+src: ${src}
+:::`;
+  return new DummyCell(md) as unknown as MarkdownCell;
+}
+
+
+/**
+ * Create a mock INotebookTracker with given cell texts
+ */
+function makeMockTracker(texts: string[]): INotebookTracker {
+  const cells = texts.map(t => new DummyCell(t));
+  const tracker = {
+    currentWidget: {
+      content: { widgets: cells }
+    }
+  };
+  return tracker as unknown as INotebookTracker;
+}
+
+describe('mdx citations', () => {
+  beforeEach(() => {
+    // reset global order and map
+    gCitationOrder.length = 0;
+    gCitationMap.clear();
+  });
+
+  it('analyzeCitations finds simple keys', () => {
+    const src = 'See ^foo and ^bar.';
+    const cites = analyzeCitations(src);
+    expect(cites.has('foo')).toBe(true);
+    expect(cites.has('bar')).toBe(true);
+    expect(cites.size).toBe(2);
+  });
+
+  it('analyzeCitations ignores math spans', () => {
+    const src = '$x^2 + y^b$ and ^qux';
+    const cites = analyzeCitations(src);
+    expect(cites.has('2')).toBe(false);
+    expect(cites.has('b')).toBe(false);
+    expect(cites.has('qux')).toBe(true);
+  });
+
+  it('scanCitations collects citations in order', () => {
+    const tracker = makeMockTracker([
+      'First ^a then ^b',
+      'Then ^c and repeat ^a'
+    ]);
+    const order = scanCitations(tracker);
+    expect(order).toEqual(['a', 'b', 'c']);
+    expect(gCitationMap.get('a')).toEqual({ n: 1 });
+    expect(gCitationMap.get('b')).toEqual({ n: 2 });
+    expect(gCitationMap.get('c')).toEqual({ n: 3 });
+  });
+
+  it('preprocessCitations replaces keys with numbers', () => {
+    const tracker = makeMockTracker(['^x ^y']);
+    scanCitations(tracker);
+    const md = preprocessCitations('prefix ^x and ^y and ^z');
+    // x->[1], y->[2], z undefined->[?]
+    expect(md).toBe('prefix [1] and [2] and [?]');
+  });
+
+  it('scanCitations handles text with no citations', () => {
+    const texts = ['Hi there', 'The world', 'is great'];
+    const tracker = makeMockTracker(texts);
+    scanCitations(tracker);
+    expect(gCitationOrder.length).toBe(0);
+    expect(gCitationMap.size).toBe(0);
+  });
+  
+  it('scanCitations across multiple cells updates gCitationOrder', () => {
+    const texts = ['^foo', '^bar', '^baz'];
+    const tracker = makeMockTracker(texts);
+    scanCitations(tracker);
+    expect(gCitationOrder).toEqual(['foo', 'bar', 'baz']);
+    expect(preprocessCitations('^bar')).toBe('[2]');
+  });
+
+  it('updateCitationMap detects added citations', () => {
+    const tracker = makeMockTracker(['^a']);
+    scanCitations(tracker);
+    const cells = (tracker.currentWidget!.content.widgets as MarkdownCell[]);
+    // Pretend editing the source to add ^b
+    cells[0].model.sharedModel.setSource('^a ^b');
+
+    const changed = updateCitationMap(
+      cells[0] as any,
+      cells as any
+    );
+    expect(Array.from(changed)).toContain('b');
+    expect(gCitationOrder).toEqual(['a', 'b']);
+  });
+
+  it('updateCitationMap detects removed citations', () => {
+    const tracker = makeMockTracker(['^x ^y']);
+    scanCitations(tracker);
+    const cells = (tracker.currentWidget!.content.widgets as MarkdownCell[]);
+    // old cites x,y -> now just x
+    cells[0].model.sharedModel.setSource('^x');
+
+    const changed = updateCitationMap(
+      cells[0] as any,
+      cells as any
+    );
+    expect(Array.from(changed)).toContain('y');
+    expect(gCitationOrder).toEqual(['x']);
+  });
+});
+
+
+// A trivial sample .bib for parsing:
+
+const sampleBib = `
+@article{smith2020,
+  author = {John Smith},
+  title  = {An Example Article},
+  year   = {2020}
+}
+`;
+
+const sampleBibA = `
+@article{smith2020,
+  author = {John Smith},
+  title  = {Article A},
+  year   = {2020}
+}
+`;
+const sampleBibB = `
+@article{jones2021,
+  author = {Alice Jones},
+  title  = {Article B},
+  year   = {2021}
+}
+`;
+
+
+describe('loadBibEntries()', () => {
+  const notebookPath = 'notebooks/mydoc.ipynb';
+  const localSrc = 'refs/test.bib';
+  const remoteSrc = 'https://example.com/test.bib';
+
+  beforeEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('fetches a remote .bib via global.fetch and parses it', async () => {
+    // mock fetch to return both text() and a headers.get()
+    const fakeHeaders = {
+      get: jest.fn()
+        .mockImplementationOnce((k: string) => 'W/"etag-value"')    // first call: etag
+        .mockImplementationOnce((k: string) => 'Wed, 01 Jan 2020')  // second: last-modified
+    };
+    global.fetch = jest.fn().mockResolvedValue({
+      ok:         true,
+      statusText: 'OK',
+      text:       () => Promise.resolve(sampleBib),
+      headers:    fakeHeaders
+    } as any);
+
+    const { entries, etag, lastModified } = await loadBibEntries(remoteSrc, notebookPath);
+
+
+    // bibtexParse.toJSON should have run
+    expect(entries.has("smith2020")).toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith(remoteSrc);
+
+    // And we captured the headers
+    expect(etag).toBe('W/"etag-value"');
+    expect(lastModified).toBe('Wed, 01 Jan 2020');
+  });
+
+  it('throws if remote fetch fails', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: false,
+      statusText: 'Not Found'
+    } as any);
+
+    await expect(loadBibEntries(remoteSrc, notebookPath))
+      .rejects
+      .toThrow(/Failed to fetch/);
+  });
+  
+  it('uses the Jupyter ContentsManager for local paths', async () => {
+    // spy on ContentsManager.get
+    const cmGet = jest
+      .spyOn(ContentsManager.prototype, 'get')
+      .mockResolvedValue({
+        content:       sampleBib,
+        last_modified: '2025-07-09T12:00:00Z',
+        type:          'file',
+        format:        'text'
+      } as any as Contents.IModel);
+
+    const { entries, etag, lastModified } = await loadBibEntries(localSrc, notebookPath);
+
+    expect(cmGet).toHaveBeenCalledWith(
+      // fullPath === "notebooks/refs/test.bib"
+      'notebooks/refs/test.bib',
+      { content: true, type: 'file', format: 'text' }
+    );
+    expect(entries.has("smith2020")).toBe(true);
+
+    // Local loads have no HTTP-ETag, but do get lastModified from the model
+    expect(etag).toBeUndefined();
+    expect(lastModified).toBe('2025-07-09T12:00:00Z');
+
+  });
+
+});
+
+
+describe('updateBibliography()', () => {
+  const notebookPath = 'notebooks/mydoc.ipynb';
+  const remoteA = 'https://example.com/a.bib';
+  const remoteB = 'https://example.com/b.bib';
+  const localA  = 'refs/a.bib';
+  const localB  = 'refs/b.bib';
+
+  beforeEach(() => {
+    _bibCache.clear();
+    gCitationEntries.clear();
+    jest.restoreAllMocks();
+  });
+
+  it('initial GET captures ETag and Last-Modified', async () => {
+    const hdrs = {
+      get: jest.fn()
+        .mockImplementationOnce(() => 'W/"v1"')            // ETag
+        .mockImplementationOnce(() => 'Tue, 01 Jan 2025')  // Last-Modified
+    };
+    global.fetch = jest.fn().mockResolvedValue({
+      ok:      true,
+      text:    () => Promise.resolve(sampleBibA),
+      headers: hdrs
+    } as any);
+
+    const cell = makeCell(remoteA);
+    const changed = await updateBibliography(cell as any, notebookPath);
+    expect(changed).toBe(true);
+
+    const info = _bibCache.get(remoteA)!;
+    expect(info.etag).toBe('W/"v1"');
+    expect(info.lastModified).toBe('Tue, 01 Jan 2025');
+    expect(gCitationEntries.has('smith2020')).toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith(remoteA);
+  });
+
+  it('HEAD returns same ETag → no reload (false)', async () => {
+    // 1) initial GET
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok:      true,
+        text:    () => Promise.resolve(sampleBibA),
+        headers: { get: () => 'W/"v1"' }
+      } as any)
+      // 2) HEAD same ETag
+      .mockResolvedValueOnce({
+        ok:      true,
+        headers: { get: () => 'W/"v1"' }
+      } as any);
+
+    const cell = makeCell(remoteA);
+    await updateBibliography(cell as any, notebookPath);
+
+    // 3) second call: HEAD only
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok:      true,
+      headers: { get: () => 'W/"v1"' }
+    } as any);
+
+    const changed2 = await updateBibliography(cell as any, notebookPath);
+    expect(changed2).toBe(false);
+    // fetch called: 1×GET, 1×HEAD
+    expect((global.fetch as jest.Mock).mock.calls.length).toBe(2);
+  });
+
+  it('initial GET with only Last-Modified (no ETag)', async () => {
+    const hdrs = {
+      get: jest.fn()
+        .mockImplementationOnce(() => null)               // ETag
+        .mockImplementationOnce(() => 'Wed, 02 Feb 2025') // Last-Modified
+    };
+    global.fetch = jest.fn().mockResolvedValue({
+      ok:      true,
+      text:    () => Promise.resolve(sampleBibA),
+      headers: hdrs
+    } as any);
+
+    const cell = makeCell(remoteA);
+    const changed = await updateBibliography(cell as any, notebookPath);
+    expect(changed).toBe(true);
+
+    const info = _bibCache.get(remoteA)!;
+    expect(info.etag).toBeUndefined();
+    expect(info.lastModified).toBe('Wed, 02 Feb 2025');
+  });
+
+  it('HEAD same Last-Modified → false', async () => {
+    global.fetch = jest.fn()
+      // initial GET
+      .mockResolvedValueOnce({
+        ok:      true,
+        text:    () => Promise.resolve(sampleBibA),
+        headers: { get: () => 'Thu, 03 Mar 2025' }
+      } as any)
+      // HEAD same LM
+      .mockResolvedValueOnce({
+        ok:      true,
+        headers: { get: () => 'Thu, 03 Mar 2025' }
+      } as any);
+
+    const cell = makeCell(remoteA);
+    await updateBibliography(cell as any, notebookPath);
+
+    const changed2 = await updateBibliography(cell as any, notebookPath);
+    expect(changed2).toBe(false);
+  });
+
+  it('srcChanged forces load', async () => {
+    global.fetch = jest.fn()
+      // 1) initial GET for remoteA
+      .mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve(sampleBibA),
+        headers: { get: () => 'E1' }
+      } as any)
+      // 2) GET-B (new src)
+      .mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve(sampleBibB),
+        headers: { get: () => 'E2' }
+      } as any);
+
+    const cell = makeCell(remoteA);
+    await updateBibliography(cell as any, notebookPath);
+
+    // user edited the cell to a different URL textually
+    cell.model.sharedModel.setSource(`::: bibliography\nsrc: ${remoteB}\n:::`);
+
+    const changed = await updateBibliography(cell as any, notebookPath);
+    expect(changed).toBe(true);
+    expect((global.fetch as jest.Mock).mock.calls.length).toBe(2);
+  });
+
+  it('HEAD 404 clears entries & true', async () => {
+    global.fetch = jest.fn()
+      // initial GET
+      .mockResolvedValueOnce({
+        ok:      true,
+        text:    () => Promise.resolve(sampleBibA),
+        headers: { get: () => null }
+      } as any)
+      // HEAD fail
+      .mockResolvedValueOnce({ ok: false, statusText: 'Not Found' } as any);
+
+    const cell = makeCell(remoteA);
+    await updateBibliography(cell as any, notebookPath);
+
+    const changed4 = await updateBibliography(cell as any, notebookPath);
+    expect(changed4).toBe(true);
+    expect(gCitationEntries.size).toBe(0);
+  });
+
+  it('initial local GET captures last_modified', async () => {
+    const cmGet = jest.spyOn(ContentsManager.prototype, 'get')
+      .mockResolvedValueOnce({
+        content:       sampleBibA,
+        last_modified: 'L1',
+        type:          'file',
+        format:        'text'
+      } as any);
+
+    const cell = makeCell(localA);
+    const changed = await updateBibliography(cell as any, notebookPath);
+    expect(changed).toBe(true);
+    expect(gCitationEntries.has('smith2020')).toBe(true);
+
+    const info = _bibCache.get(localA)!;
+    expect(info.lastModified).toBe('L1');
+  });
+
+  it('local metadata same → false', async () => {
+    // initial load
+    jest.spyOn(ContentsManager.prototype, 'get')
+      .mockResolvedValueOnce({
+        content:       sampleBibA,
+        last_modified: 'L1',
+        type:          'file',
+        format:        'text'
+      } as any);
+
+    const cell = makeCell(localA);
+    await updateBibliography(cell as any, notebookPath);
+
+    // metadata-only same
+    const cmGet2 = jest.spyOn(ContentsManager.prototype, 'get')
+      .mockResolvedValueOnce({
+        last_modified: 'L1',
+        type:          'file',
+        format:        'text'
+      } as any);
+
+    const changed2 = await updateBibliography(cell as any, notebookPath);
+    expect(changed2).toBe(false);
+  });
+
+  it('local metadata changed → reload & true', async () => {
+    // initial load
+    jest.spyOn(ContentsManager.prototype, 'get')
+      .mockResolvedValueOnce({
+        content:       sampleBibA,
+        last_modified: 'L1',
+        type:          'file',
+        format:        'text'
+      } as any);
+
+    const cell = makeCell(localA);
+    await updateBibliography(cell as any, notebookPath);
+
+    // metadata-only changed, then full reload
+    const spy = jest.spyOn(ContentsManager.prototype, 'get')
+      .mockResolvedValueOnce({
+        last_modified: 'L2',
+        type:          'file',
+        format:        'text'
+      } as any)
+      .mockResolvedValueOnce({
+        content:       sampleBibB,
+        last_modified: 'L2',
+        type:          'file',
+        format:        'text'
+      } as any);
+
+    const changed3 = await updateBibliography(cell as any, notebookPath);
+    expect(changed3).toBe(true);
+    expect(gCitationEntries.has('jones2021')).toBe(true);
+  });
+
+  it('local get error clears & true', async () => {
+    // initial load
+    jest.spyOn(ContentsManager.prototype, 'get')
+      .mockResolvedValueOnce({
+        content:       sampleBibA,
+        last_modified: 'L1',
+        type:          'file',
+        format:        'text'
+      } as any);
+
+    const cell = makeCell(localA);
+    await updateBibliography(cell as any, notebookPath);
+
+    // metadata-only throws
+    jest.spyOn(ContentsManager.prototype, 'get')
+      .mockRejectedValueOnce(new Error('No such file'));
+
+    const changed4 = await updateBibliography(cell as any, notebookPath);
+    expect(changed4).toBe(true);
+    expect(gCitationEntries.size).toBe(0);
+  });
+
+  it('local initial GET no last_modified then metadata-same → false', async () => {
+    jest.spyOn(ContentsManager.prototype, 'get')
+      .mockResolvedValueOnce({
+        content: sampleBibA,
+        type:    'file',
+        format:  'text'
+        // no last_modified field
+      } as any);
+
+    const cell = makeCell(localA);
+    await updateBibliography(cell as any, notebookPath);
+
+    const cm2 = jest.spyOn(ContentsManager.prototype, 'get')
+      .mockResolvedValueOnce({
+        type:   'file',
+        format: 'text'
+        // still no last_modified
+      } as any);
+
+    const changed = await updateBibliography(cell as any, notebookPath);
+    expect(changed).toBe(false);
+  });
+
+  it('local srcChanged forces reload', async () => {
+    // initial load
+    jest.spyOn(ContentsManager.prototype, 'get')
+      .mockResolvedValueOnce({
+        content:       sampleBibA,
+        last_modified: 'L1',
+        type:          'file',
+        format:        'text'
+      } as any);
+
+    const cell = makeCell(localA);
+    await updateBibliography(cell as any, notebookPath);
+
+    // metadata-only same
+    jest.spyOn(ContentsManager.prototype, 'get')
+      .mockResolvedValueOnce({
+        content:       sampleBibB,
+        last_modified: 'L2',
+        type:          'file',
+        format:        'text'
+      } as any);
+
+    // user edits src line but to different path
+    cell.model.sharedModel.setSource(`::: bibliography\nsrc: ${localB}\n:::`);
+
+    const changed = await updateBibliography(cell as any, notebookPath);
+    expect(changed).toBe(true);
+    expect((global.fetch as jest.Mock).mock.calls.length).toBe(2);
+
+  });
+});

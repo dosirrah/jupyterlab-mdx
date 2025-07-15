@@ -11,12 +11,12 @@ import { preprocessCitations } from './bib';
 type CellXRMeta = {
   labelsDefined: Set<string>;       // e.g. ["eq:foo", "eq:bar", "goo"]
   labelsReferenced: Set<string>;    // same kinds of labels as labelsDefined.
+  duplicateLabels: Set<string>;     // duplicates within a single cell.
 };
 
 type CellBibMeta = {
   citationsReferenced: Set<string>;
   bibCell: boolean;
-  src?: string;
 };
 
 export interface MarkdownCellWithXR extends MarkdownCell {
@@ -24,13 +24,6 @@ export interface MarkdownCellWithXR extends MarkdownCell {
   bibMeta?: CellBibMeta;
 }
 
-
-// A label comes in one of two forms.   It is either a member of the global
-// enumeration or it is a membr of a named enumeration.   If it has the form
-// @foo then it is the member "foo" of the global enumeration.   If it has the form
-// @bar:foo then it is the member "foo" of the named enumeration with name "bar".
-const gLabelMap = new Map<string, { name: string | null; id: string; n: number }>();
-export const gDuplicateLabels = new Set<string>();
 
 // TAGGABLE is a reference to the \tag command in LaTex.  It is used to
 // number equations.  Currently only do this for the 'eq' but we may
@@ -61,15 +54,19 @@ function formatLabel(name: string | null, n: number | string, raw = false): stri
  * finds labels and references throughout the document and
  * associates numbers with each labels.   It also associates
  * the labels and references appearing within a single
- * cell as metadata attached to that cell.  
+ * cell as metadata attached to that cell.
+ *
+ * @param tracker
+ * @returns A map from each label to its associated number and a set of labels
+ *          appearing more than once in the document.
  */
-export function scanLabels(tracker: INotebookTracker): void {
-  console.log("scanLabels");
-  gLabelMap.clear();
-  gDuplicateLabels.clear();
+export function scanLabels(tracker: INotebookTracker): [Map<string, number>, Set<string>] {
+  //console.log("scanLabels");
 
   const enumCounters = new Map<string, number>();
   const cells = tracker.currentWidget?.content.widgets ?? [];
+  const labelMap = new Map<string, number>();
+  const duplicateLabels = new Set<string>();
 
   for (const cell of cells) {
     //console.log("s2 scanLabels for cell of cells: Markdown celll?", cell instanceof MarkdownCell);
@@ -82,23 +79,25 @@ export function scanLabels(tracker: INotebookTracker): void {
 
     const meta = analyzeMarkdown(src);
     xrCell.xrMeta = meta;
+    meta.duplicateLabels.forEach(v => duplicateLabels.add(v));
 
     // Now assign numbers to any newly discovered labels
     for (const key of meta.labelsDefined) {
-      if (gLabelMap.has(key)) {
-        gDuplicateLabels.add(key);
+      if (labelMap.has(key)) {
+        duplicateLabels.add(key);
       } else {
         const [name, id] = key.includes(':') ? key.split(':') : [null, key];
         const enumName = name ?? '_global';
         const n = (enumCounters.get(enumName) ?? 0) + 1;
         enumCounters.set(enumName, n);
-        //console.log(`s4 scanLabels gLabelMap set ${key}, { ${name}, ${id}, ${n} }`);
+        //console.log(`s4 scanLabels labelMap set ${key}, ${n}`);
 
-        gLabelMap.set(key, { name, id, n });
+        labelMap.set(key, n);
       }
     }
-    console.log("s5 scanLabels returning");
+    //console.log("s5 scanLabels returning");
   }
+  return [labelMap, duplicateLabels];
 }
 
 /**
@@ -108,6 +107,7 @@ function analyzeMarkdown(src: string): CellXRMeta {
 
   const labelsDefined = new Set<string>();
   const labelsReferenced = new Set<string>();
+  const duplicateLabels = new Set<string>();
 
   // Match labels: @eq:foo or @foo
   const labelRe = /@([A-Za-z]+:)?([A-Za-z0-9:_\-]+)/g;
@@ -115,7 +115,11 @@ function analyzeMarkdown(src: string): CellXRMeta {
   while ((match = labelRe.exec(src)) !== null) {
     const name = match[1] ? match[1].slice(0, -1) : null;
     const id = match[2];
-    labelsDefined.add(toId(name, id));
+    const to_id = toId(name, id);
+    if (labelsDefined.has(to_id)) {
+       duplicateLabels.add(to_id);
+    }
+    labelsDefined.add(to_id);
   }
 
   // Match references: #eq:foo or #foo
@@ -126,7 +130,7 @@ function analyzeMarkdown(src: string): CellXRMeta {
     labelsReferenced.add(toId(name, id));
   }
 
-  return { labelsDefined, labelsReferenced };
+  return { labelsDefined, labelsReferenced, duplicateLabels };
 }
 
 /**
@@ -140,23 +144,24 @@ function analyzeMarkdown(src: string): CellXRMeta {
  * @param duplicateLabels - Set of labels known to appear more than once in the document.
  * @returns Transformed markdown with each label or reference replaced appropriately.
  */
-export function preprocessLabels(markdown: string, duplicateLabels: Set<string>): string {
+export function preprocessLabels(
+                  markdown: string,
+                  labelMap: Map<string, number>,
+                  duplicateLabels: Set<string>): string {
   const re = /(@|#)([A-Za-z]+:)?([A-Za-z0-9:_\-]+)(!?)/g;
 
   return markdown.replace(re, (full, sym, enumName, id, bang) => {
     const name = enumName ? enumName.slice(0, -1) : null;
     const key = toId(name, id);
-    const entry = gLabelMap.get(key);
+    const n = labelMap.get(key);
 
     if (duplicateLabels.has(key)) {
         return `⚠️ {duplicate: ${key}}`
     }
     
-    if (!entry) {
+    if (!n) {
       return `⚠️ {undefined: ${key}}`;
     }
-
-    const { n } = entry;
 
     if (sym === '@') {
       // Replace with raw number or formatted (e.g., (3)) if taggable
@@ -174,17 +179,19 @@ export function preprocessLabels(markdown: string, duplicateLabels: Set<string>)
 
 
 /**
- * Updates the global gLabelMap after an edit to a single Markdown cell.
+ * Updates the notebook's labelMap after an edit to a single Markdown cell.
  *
  * This function:
  * - Analyzes the edited cell to extract any label changes.
  * - Compares old and new labels to detect additions, deletions, or reorderings.
- * - Removes obsolete labels from the global gLabelMap.
+ * - Removes obsolete labels from the global labelMap.
  * - Recomputes numbering for downstream labels affected by the change.
  * - Identifies any duplicate labels that emerge as a result.
  *
  * @param edited - The Markdown cell that was just edited.
  * @param allCells - All Markdown cells in the document, in visual/topological order.
+ * @param labelMap - label map to be updated
+ * @param duplicateLabels - duplicate labels to be updated.
  *
  * @returns A pair:
  *   - `changedLabels`: A set of labels whose numbers have changed or were removed.
@@ -192,7 +199,8 @@ export function preprocessLabels(markdown: string, duplicateLabels: Set<string>)
  */
 export function updateLabelMap(
   edited: MarkdownCellWithXR,
-  allCells: MarkdownCellWithXR[]
+  allCells: MarkdownCellWithXR[],
+  labelMap: Map<string, number>
 ): [Set<string>, Set<string>] {
   //console.log("1 updateLabelMap");
   const newMeta = analyzeMarkdown(edited.model.sharedModel.getSource());
@@ -211,9 +219,9 @@ export function updateLabelMap(
   //console.log("3 updateLabelMap labelsChanged", labelsChanged);
 
   // If labels didn't change then we can safely return.  If only refs changed there is no
-  // need to update the gLabelMap and the cell will still properly render even if there are new
+  // need to update the labelMap and the cell will still properly render even if there are new
   // references.
-  if (!labelsChanged) return [new Set<string>(), gDuplicateLabels];
+  if (!labelsChanged) return [new Set<string>(), new Set<string>()];
 
   const affectedEnums = new Set<string>();
   const removedLabels = new Set<string>();
@@ -221,7 +229,7 @@ export function updateLabelMap(
   // remove any labels that no longer exist.
   for (const label of oldMeta.labelsDefined) {
     if (!newMeta.labelsDefined.has(label)) {
-      gLabelMap.delete(label);
+      labelMap.delete(label);
       removedLabels.add(label);  // Track for invalidation
     }
   }
@@ -232,13 +240,8 @@ export function updateLabelMap(
     affectedEnums.add(name ?? '_global');
   }
 
-  const [changedLabels, duplicateLabels] = renumberDownstream(edited, allCells, affectedEnums);
-
-  // gDuplicateLabels is used by default render pipeline.
-  gDuplicateLabels.clear();
-  for (const item of duplicateLabels) {
-      gDuplicateLabels.add(item);
-  }
+  const [changedLabels, duplicateLabels] =
+      renumberDownstream(labelMap, edited, allCells, affectedEnums);
   
   // make sure that dangling references are rerendered as "??" by including removed
   // labels in the set of changedLabels.
@@ -250,6 +253,7 @@ export function updateLabelMap(
 }
 
 function renumberDownstream(
+  labelMap: Map<string, number>,
   fromCell: MarkdownCellWithXR,
   allCells: MarkdownCellWithXR[],
   affectedEnums: Set<string>
@@ -304,9 +308,9 @@ function renumberDownstream(
           const newN = (counters.get(enumKey) ?? 0) + 1;
           counters.set(enumKey, newN);
           
-          const prev = gLabelMap.get(label);
-          if (!prev || prev.n !== newN) {
-              gLabelMap.set(label, { name, id, n: newN });
+          const prev = labelMap.get(label);
+          if (!prev || prev !== newN) {
+              labelMap.set(label, newN);
               changedLabels.add(label);
           }
       }
@@ -336,7 +340,6 @@ function computeChangedLabels(
 
 // exported for purposes of testing.
 export const __testExports__ = {
-  gLabelMap,
   toId,
   formatLabel,
   analyzeMarkdown

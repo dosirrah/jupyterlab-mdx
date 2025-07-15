@@ -6,8 +6,7 @@ import {
 import { ILatexTypesetter } from '@jupyterlab/rendermime';
 import {
   MarkdownCellWithXR,
-  preprocessLabels,
-  gDuplicateLabels } from './xr';
+  preprocessLabels } from './xr';
 import { preprocessCitations } from './bib';
 
 /**
@@ -17,7 +16,9 @@ import { preprocessCitations } from './bib';
 export function rerenderAffected(
   allCells: MarkdownCellWithXR[],
   changedLabels: Set<string>,
+  labelMap: Map<string, number>,
   duplicateLabels: Set<string>,
+  citationMap: Map<string, number>,
   changedCitations: Set<string>,
   bibChanged : boolean,
   rendermime: IRenderMimeRegistry,
@@ -56,7 +57,8 @@ export function rerenderAffected(
     }
     
     if (needsUpdate) {
-      rerenderSingleMarkdownCell(cell, rendermime, latex, duplicateLabels);
+      rerenderSingleMarkdownCell(cell, rendermime, latex, labelMap,
+                                 duplicateLabels, citationMap);
     }
   }
 }
@@ -70,7 +72,9 @@ function rerenderSingleMarkdownCell(
   cell: MarkdownCell,
   rendermime: IRenderMimeRegistry,
   latex: ILatexTypesetter,
-  duplicateLabels: Set<string>
+  labelMap: Map<string, number>,
+  duplicateLabels: Set<string>,
+  citationMap: Map<string, number>
 ): void {
 
   // Interestingly chatGPT never suggested
@@ -91,8 +95,8 @@ function rerenderSingleMarkdownCell(
 
   let md = cell.model.sharedModel.getSource();
   const mimeType = 'text/markdown';
-  md = preprocessLabels(md, duplicateLabels);
-  md = preprocessCitations(md);
+  md = preprocessLabels(md, labelMap, duplicateLabels);
+  md = preprocessCitations(md, citationMap);
 
   const model = {
     data: { [mimeType]: md},
@@ -134,7 +138,10 @@ function rerenderSingleMarkdownCell(
 export function rerenderAllMarkdown(
   tracker: INotebookTracker,
   rendermime: IRenderMimeRegistry,
-  latex: ILatexTypesetter
+  latex: ILatexTypesetter,
+  labelMap: Map<string, number>,
+  duplicateLabels: Set<string>,
+  citationMap: Map<string, number>
 ): void {
   console.log("rerenderAllMarkdown: re-rendering all markdown cells");
 
@@ -142,7 +149,8 @@ export function rerenderAllMarkdown(
 
   for (const cell of cells) {
     if (cell instanceof MarkdownCell) {
-      rerenderSingleMarkdownCell(cell, rendermime, latex, gDuplicateLabels);
+      rerenderSingleMarkdownCell(cell, rendermime, latex, labelMap,
+                                 duplicateLabels, citationMap);
     }
   }
 }

@@ -6,19 +6,11 @@ import { MarkdownCellWithXR } from './xr';
 import { setsEqualOrdered, union } from './util';
 import bibtexParse from 'bibtex-parse-js';
 import { NotebookActions } from '@jupyterlab/notebook';
-
-// Global citation order (first-use)
-export const gCitationOrder: string[] = [];
-
-// citation key → { n: citationNumber }
-const gCitationMap = new Map<string, { n: number }>();
-
-// populated from the .bib file.
-export let gCitationEntries = new Map<string, any>() ;
+import { BibInfo } from './state';
 
 // metainfo about the bib file including when
 // it last changed.
-const bibCache = new Map<string, any[]>();
+//const bibCache = new Map<string, any[]>();
 
 // Regex for math spans ($...$, $$...$$, or \[...\]) to ignore ^ inside math
 const mathSpanRe = /(\${2}[\s\S]+?\${2}|\$[^$]+\$|\\\[[\s\S]+?\\\])/g;
@@ -29,19 +21,24 @@ const mathRestoreRe = /\u0000MATH(\d+)\u0000/g;
 
 /**
  * Scan all markdown cells for '^KEY' citations in first-use order, ignoring math.
+ *
+ * @returns A list of citations keys in the order they were encountered in the
+ *          notebook.
  */
 export function scanCitations(tracker: INotebookTracker): string[] {
-  gCitationOrder.length = 0;
-  gCitationMap.clear();
   const seen = new Set<string>();
 
+  //console.log("sC1 scanCitations");
+  
   tracker.currentWidget?.content.widgets.forEach(widget => {
     if (!(widget instanceof MarkdownCell)) return;
     const xrCell = widget as MarkdownCellWithXR;
     const src = xrCell.model.sharedModel.getSource();
+    //console.log("sC1 scanCitations src:", src);
 
     // Attach per-cell metadata
     const cites = analyzeCitations(src);
+    //console.log("sC2 scanCitations cites:", cites);
 
     xrCell.bibMeta = {
         citationsReferenced: cites,
@@ -51,14 +48,14 @@ export function scanCitations(tracker: INotebookTracker): string[] {
     // Update global order & map
     for (const key of cites) {
       if (!seen.has(key)) {
+        //console.log("sC3: seen. Adding key:", key);
         seen.add(key);
-        gCitationOrder.push(key);
-        gCitationMap.set(key, { n: gCitationOrder.length });
       }
     }
   });
+  //console.log("sC3: seen.size", seen.size);
 
-  return gCitationOrder;
+  return Array.from(seen);  // all citations in the order added.
 }
 
 
@@ -67,7 +64,12 @@ export function scanCitations(tracker: INotebookTracker): string[] {
  */
 function analyzeCitations(src: string): Set<string> {
   const cites = new Set<string>();
-  const text = src.replace(mathSpanRe, '');  // strip out math
+
+  // 1) Remove HTML comments so we don't pick up ^… inside <!-- … -->
+  const noComments = src.replace(/<!--[\s\S]*?-->/g, '');
+
+  // 2) Strip out math spans
+  const text = noComments.replace(mathSpanRe, '');
 
   for (const [, key] of text.matchAll(/\^([A-Za-z0-9_-]+)/g)) {
     if (!cites.has(key)) {
@@ -80,9 +82,10 @@ function analyzeCitations(src: string): Set<string> {
 
 
 /**
- * Replace '^KEY' with '[n]' according to gCitationOrder, restoring math spans.
+ * Replace '^KEY' with '[n]' according to citation order, restoring math spans.
  */
-export function preprocessCitations(markdown: string): string {
+export function preprocessCitations(markdown: string,
+                                    citationMap: Map<string, number>): string {
   // 1) Hide math spans so ^ inside LaTeX won’t match
   const mathSpans: string[] = [];
   const withoutMath = markdown.replace(mathSpanRe, m => {
@@ -90,10 +93,10 @@ export function preprocessCitations(markdown: string): string {
     return mathPlaceholder(idx);
   });
 
-  // 2) Replace each ^KEY with its [n] from gCitationMap
+  // 2) Replace each ^KEY with its [n] from citationMap
   const withNumbers = withoutMath.replace(/\^([A-Za-z0-9_-]+)/g, (_, key) => {
-    const entry = gCitationMap.get(key);
-    return entry ? `[${entry.n}]` : `[?]`;
+    const n = citationMap.get(key);
+    return n ? `[${n}]` : `[?]`;
   });
 
   // 3) Restore math spans
@@ -103,18 +106,25 @@ export function preprocessCitations(markdown: string): string {
 
 /**
  * Given the edited cell and all cells, update only citation state:
- *  - re-generate gCitationOrder & gCitationMap
- *  - return the set of citation keys whose numbers changed
+ *  - update citationMap.
+ *  - determine the set of citation keys whose numbers changed
+ *
+ * @param edited    The cell that has just been run.
+ * @param allCells  All markdown cells in the notebook.
+ * @param citationMap updated to reflect the new mapping from key to number.
+ * @returns the set of citation keys whose numbers changed
  */
 export function updateCitationMap(
   edited: MarkdownCellWithXR,
-  allCells: MarkdownCellWithXR[]
+  allCells: MarkdownCellWithXR[],
+  citationMap: Map<string, number>
 ): Set<string> {
 
   // 1) Extract old vs new citations from the cell
   const text = edited.model.sharedModel.getSource()
   const oldCites = edited.bibMeta?.citationsReferenced ?? new Set();
   const newCites = analyzeCitations(text);
+  //console.log("1 updateCitationMap. oldCites:", oldCites, "newCites:", newCites);
 
   // Attach only citation metadata:
   edited.bibMeta = {
@@ -134,25 +144,24 @@ export function updateCitationMap(
 
   // 4) Rebuild the global order array from per‐cell metadata
   const seen = new Set<string>();
-  const newOrder: string[] = [];
   allCells.forEach(cell => {
     (cell.bibMeta?.citationsReferenced ?? []).forEach((key:string) => {
       if (!seen.has(key)) {
         seen.add(key);
-        newOrder.push(key);
       }
     });
   });
 
   // 5) Recompute map & detect which keys have been moved or added.
-  const oldOrder = [...gCitationOrder];   // create shallow copy of gCitationOrder
-  gCitationOrder.length = 0;
-  gCitationMap.clear();
+  const oldOrder = Array.from(citationMap.keys());  // In order added.
+  const newOrder = Array.from(seen);   // Also in order added.
+  //console.log("2 updateCitationMap. oldOrder=", oldOrder, " newOrder=", newOrder);
+  citationMap.clear();
   const changed = new Set<string>(removed);  // start with any removals
 
+  citationMap.clear();
   newOrder.forEach((key, i) => {
-    gCitationOrder.push(key);
-    gCitationMap.set(key, { n: i + 1 });
+    citationMap.set(key, i + 1);
     // If position differs from old, mark as changed
     if (oldOrder[i] !== key) {
       changed.add(key);
@@ -224,30 +233,34 @@ export async function loadBibEntries(
   return { entries, etag, lastModified };
 }
 
-// module‐scope cache: src → { etag?, lastModified?, entriesMap }
-interface BibInfo {
-  etag?: string;
-  lastModified?: string;
-  entries: Map<string, any>;
-}
-const _bibCache = new Map<string, BibInfo>();
 
 /**
  * Will load (or reload) a .bibtex file to populate the
  * bibliography.  This function checks whether a remote .bibtex
  * file has changed and reloads if it has.
+ *
+ * @param cell
+ * @param notebookPath
+ * @param bibInfo       to be updated.
+ * @returns whether the bibInfo changed.
  */
 export async function updateBibliography(
   cell: MarkdownCellWithXR,
-  notebookPath: string
+  notebookPath: string,
+  bibInfo : BibInfo
 ): Promise<boolean> {
   const text = cell.model.sharedModel.getSource();
   const CONTAINER_RE = /^::: *bibliography[\s\S]*?:::\s*$/m;
   const SRC_RE       = /^src:\s*(\S+)\s*$/m;
 
+  //console.log("u1 updateBibliography");
+  
   if (!CONTAINER_RE.test(text)) {
+    //console.log("1a updateBibliography  no ::: bibliography found. Returning");
+
     return false;
   }
+  
   const m = text.match(SRC_RE);
   if (!m) {
     console.warn('Found ::: bibliography but no src: line');
@@ -255,76 +268,62 @@ export async function updateBibliography(
   }
   const src = m[1];
 
+  //console.log("u2 updateBibliography src:", src);
+
   cell.bibMeta = cell.bibMeta || { citationsReferenced: new Set(), bibCell: true };
-  const srcChanged = cell.bibMeta.src !== src;
-  cell.bibMeta.src = src;
-
-  // 1) If we’ve never seen this src before, do a full load
-  let info = _bibCache.get(src);
-  if (!info) {
-    const { entries, etag, lastModified } = await loadBibEntries(src, notebookPath);
-    info = { entries, etag, lastModified };
-    _bibCache.set(src, info);
-    gCitationEntries = entries;
-    return true;
-  }
-
-  // — Cached: do a metadata-only check
+  const srcChanged = bibInfo.src !== src;
   let metadataChanged = false;
 
-  if (/^[a-z]+:\/\//i.test(src)) {
-    // remote HEAD
-    const headResp = await fetch(src, { method: 'HEAD' });
-    if (!headResp.ok) {
-      // remote disappeared → clear & force update
-      _bibCache.delete(src);
-      gCitationEntries.clear();
-      return true;
-    }
-    const newEtag = headResp.headers.get('etag') ?? undefined;
-    const newLm   = headResp.headers.get('last-modified') ?? undefined;
-    metadataChanged = (newEtag !== info.etag)
-                       || (newLm !== info.lastModified);
+  // — Cached: do a metadata-only check
+  if (!srcChanged) {
 
-  } else {
-    // local metadata‐only
-    const cm = new ContentsManager();
-    const dir = PathExt.dirname(notebookPath);
-    const fullPath = PathExt.join(dir, src);
-    try {
+    //console.log("u3 updateBibliography srcChanged");
+
+    if (/^[a-z]+:\/\//i.test(src)) {
+      // remote HEAD
+      const headResp = await fetch(src, { method: 'HEAD' });
+      if (!headResp.ok) {
+        throw new Error(
+          `Could not fetch bibliography at ${src}: ` +
+          `HEAD request failed with ${headResp.status} ${headResp.statusText}`
+        );
+
+      } else {
+        const newEtag = headResp.headers.get('etag') ?? undefined;
+        const newLm   = headResp.headers.get('last-modified') ?? undefined;
+        metadataChanged = (newEtag !== bibInfo.etag)
+                           || (newLm !== bibInfo.lastModified);
+      }
+  
+    } else {
+      // local metadata‐only
+      const cm = new ContentsManager();
+      const dir = PathExt.dirname(notebookPath);
+
+      const fullPath = PathExt.join(dir, src);
       const model = await cm.get(fullPath, {
         content: false,
         type: 'file',
         format: 'text'
       });
       const newLm = (model as any).last_modified as string | undefined;
-      metadataChanged = newLm !== info.lastModified;
-    } catch {
-      // file missing → clear & force update
-      _bibCache.delete(src);
-      gCitationEntries.clear();
-      return true;
+      metadataChanged = newLm !== bibInfo.lastModified;
     }
   }
 
-  // — If file truly changed, re-load+parse
-  if (metadataChanged) {
+  //console.log("u4 updateBibliography srcChanged", srcChanged, " metadataChanged", metadataChanged);
+
+  // If changed to a different .bib file or the .bib file has changed then load.
+  if (srcChanged || metadataChanged) {
     const { entries, etag, lastModified } = await loadBibEntries(src, notebookPath);
-    info.entries      = entries;
-    info.etag         = etag;
-    info.lastModified = lastModified;
-    gCitationEntries  = entries;
+    bibInfo.src          = src;
+    bibInfo.entries      = entries;
+    bibInfo.etag         = etag;
+    bibInfo.lastModified = lastModified;
     return true;
   }
+  //console.log("u5 updateBibliography srcChanged", srcChanged, " metadataChanged", metadataChanged);
 
-  // — No metadata change: but if user literally edited the src: line,
-  //   force a rerender (pulling from cache, not reloading)
-  if (srcChanged) {
-    gCitationEntries = info.entries;
-    return true;
-  }
-
-  // — Nothing changed
   return false;
 }
 
@@ -332,22 +331,39 @@ export async function updateBibliography(
 /** 
  * Ensure a single '::: bibliography' cell exists, inserting one if missing.
  */
-export function injectBibliography(
+export function injectIfNoBibliography(
   tracker: INotebookTracker,
   panel: NotebookPanel,
-  defaultSrc?: string
+  defaultSrc?: string | null
 ): void {
   const notebook = panel.content;
   const cells = notebook.widgets;
 
+  //console.log("i1 injectIfNoBibliography cells.length", cells.length);
+  
   // 1) Do we already have a ::: bibliography container?
   for (const cell of cells) {
-    if (!(cell instanceof MarkdownCell)) {
+    //console.log("i2 injectIfNoBibliography in for loop cell.model.type:", cell.model.type);
+
+    if (cell.model.type !== 'markdown') {
+      //console.log('  not markdown, skipping');
       continue;
     }
+
+    //if (!(cell instanceof MarkdownCell)) {
+    //  console.log("i3 injectIfNoBibliography not MarkdownCell.  Continuing.");
+    //  continue;
+    //}
     const xrCell = cell as MarkdownCellWithXR;
     const text = cell.model.sharedModel.getSource();
+    
+    if (xrCell.bibMeta?.bibCell) return;
+
+    //console.log("i5 bibCell is undefined or false");
+
     if (/^::: *bibliography/m.test(text)) {
+
+      //console.log("i6 ::: bibliography found");
 
       // Preserve any existing citationsReferenced, or start fresh
       const existingCites = xrCell.bibMeta?.citationsReferenced ?? new Set<string>();
@@ -360,7 +376,11 @@ export function injectBibliography(
 
       return;
     }
+    //console.log("i7 ::: bibliography NOT found");
+
   }
+  //console.log("i8 no bibliography found.  Appending one");
+
 
   // 2) No container → we need to insert one at the end
   // Make the last cell “active” so that insertBelow will append after it
@@ -368,16 +388,26 @@ export function injectBibliography(
 
   // Perform the standard “insert a markdown cell below” action:
   NotebookActions.insertBelow(notebook);
+  NotebookActions.changeCellType(notebook, 'markdown');
 
   // Grab the newly created cell (it’s now active)
   const newCell = notebook.activeCell as MarkdownCell;
 
   if (defaultSrc) {
     // 3a) Fill it with the bibliography container snippet
-    newCell.model.sharedModel.setSource(`::: bibliography
-src: ${defaultSrc}
-:::`);
+    newCell.model.sharedModel.setSource(
+`<!--
+Automatically added by jupyterlab-mdx because you cited something (^lamport1994)
+but hadn’t yet created a bibliography. When you run this cell it will
+generate your reference list. If you’d like a different .bib file,
+just change the “src:” path below.
+-->
 
+::: bibliography
+src: ${defaultSrc}
+:::
+`);
+    
   } else {
     // 3b) Fill it with usage instructions
     newCell.model.sharedModel.setSource( [
@@ -395,10 +425,12 @@ src: ${defaultSrc}
       '',
       '_jupyterlab-mdx will fetch and parse your `.bib` file at render time and display the References list._'
     ].join('\n'));
+    
   }
 
   // Finally, leave that cell “unrendered” so the user sees the source
   newCell.rendered = false;
+
 }
 
 
@@ -433,10 +465,14 @@ function formatACM(entry: any): string {
  * Replace the first ::: bibliography … ::: container in `md` with
  * a rendered, numbered ACM-style reference list based on gCitationOrder.
  *
- * @param md            The raw markdown of one cell.
- * @param notebookPath  Path to the .ipynb (for resolving relative src).
+ * @param md            The raw markdown of a cell containing ::: bibliography :::
+ * @param 
  */
-export function generateBibliography(md: string): string {
+export function generateBibliography(md: string,
+                                     citations: string[],
+                                     bibMap: Map<string, any>
+                                     ): string {
+
   // 1) Find the entire ::: bibliography … ::: block
   //    - `m` = multiline, `s` = dot matches newline
   const containerRe = /^::: *bibliography[\s\S]*?:::\s*$/m;
@@ -445,8 +481,8 @@ export function generateBibliography(md: string): string {
   }
 
   // 2) Build the bibliography lines in order
-  const lines = gCitationOrder.map((key, idx) => {
-    const entry = gCitationEntries.get(key);
+  const lines = citations.map((key, idx) => {
+    const entry = bibMap.get(key);
     if (!entry) {
       return `${idx + 1}. **[?]** Missing entry for \`${key}\``;
     }
@@ -459,9 +495,6 @@ export function generateBibliography(md: string): string {
 
 // exported for purposes of testing.
 export const __testExports__ = {
-  gCitationOrder,
-  gCitationMap,
-  _bibCache,
   analyzeCitations,
   loadBibEntries
 };

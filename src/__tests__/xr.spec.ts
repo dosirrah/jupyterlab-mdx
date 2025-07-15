@@ -7,8 +7,8 @@ import {
   preprocessLabels,
 } from '../xr';
 
-import { __testExports__, gDuplicateLabels } from '../xr';
-const { gLabelMap, toId, formatLabel, analyzeMarkdown } = __testExports__;
+import { __testExports__ } from '../xr';
+const { toId, formatLabel, analyzeMarkdown } = __testExports__;
 import { MarkdownCell } from '@jupyterlab/cells';
 import { NotebookPanel } from '@jupyterlab/notebook';
 import { INotebookTracker } from '@jupyterlab/notebook';
@@ -51,7 +51,6 @@ function makeMockTracker(texts: string[]): INotebookTracker {
 describe('mdx cross-references', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
-    gLabelMap.clear();
   });
 
   const empty = new Set<string>();
@@ -73,11 +72,12 @@ describe('mdx cross-references', () => {
   
   it('registers labels from text nodes', () => {
     const tracker = makeMockTracker(['See @foo and @bar.']);  
-    scanLabels(tracker);
+    const [ labelMap, duplicateLabels ] = scanLabels(tracker);
     
-    expect(gLabelMap.has('foo')).toBe(true);
-    expect(gLabelMap.get('foo')).toEqual({ name: null, id: 'foo', n: 1 });
-    expect(gLabelMap.get('bar')).toEqual({ name: null, id: 'bar', n: 2 });
+    expect(labelMap.has('foo')).toBe(true);
+    expect(labelMap.get('foo')).toEqual(1);
+    expect(labelMap.get('bar')).toEqual(2);
+    expect(duplicateLabels.size).toEqual(0);
   });
 
 
@@ -85,20 +85,23 @@ describe('mdx cross-references', () => {
     const tracker = makeMockTracker([
           'Equation @eq:alpha and again @eq:beta.',
           'And also @eq:beta and @fig:gamma']);
-    scanLabels(tracker);
+    const [ labelMap, duplicateLabels ] = scanLabels(tracker);
     
-    expect(gLabelMap.has('eq:alpha')).toBe(true);
-    expect(gLabelMap.get('eq:alpha')).toEqual({ name: 'eq', id: 'alpha', n: 1 });
-    expect(gLabelMap.get('eq:beta')).toEqual({ name: 'eq', id: 'beta', n: 2 });
+    expect(labelMap.has('eq:alpha')).toBe(true);
+    expect(labelMap.get('eq:alpha')).toEqual(1);
+    expect(labelMap.get('eq:beta')).toEqual(2);
+    expect(duplicateLabels.size).toEqual(1);
 
   });
 
   it('does not double-count repeated labels', () => {
     const tracker = makeMockTracker(['@foo and again @foo']);
 
-    scanLabels(tracker);
+    const [ labelMap, duplicateLabels ] = scanLabels(tracker);
 
-    expect(gLabelMap.get('foo')?.n).toBe(1);
+    expect(labelMap.get('foo')).toEqual(1);
+    expect(duplicateLabels.size).toEqual(1);
+    expect(duplicateLabels.has('foo')).toBe(true);
   });
 
 
@@ -108,16 +111,18 @@ describe('mdx cross-references', () => {
 ## @life. Life`
     const tracker = makeMockTracker([markdown]);
 
-    scanLabels(tracker);
+    const [ labelMap, duplicateLabels ] = scanLabels(tracker);
 
-    const result = preprocessLabels(markdown, empty);
+    const result = preprocessLabels(markdown, labelMap, duplicateLabels);
     expect(result).toContain('section 1');
     expect(result).toContain('## 1. Life');
   });
   
   it('renders references to undefined labels with warning', () => {
 
-    const result = preprocessLabels('In section #foo', empty);
+    const noLabels = new Map<string, number>();
+    const noDups = new Set<string>();
+    const result = preprocessLabels('In section #foo', noLabels, noDups);
 
     expect(result).toEqual("In section ⚠️ {undefined: foo}");
   });
@@ -127,12 +132,12 @@ describe('mdx cross-references', () => {
     const markdown = ['In section #foo', '## @foo Foo'];
     const tracker = makeMockTracker(markdown);
 
-    scanLabels(tracker);
-    let result = preprocessLabels(markdown[0], empty);
+    const [ labelMap, duplicateLabels ] = scanLabels(tracker);
+    let result = preprocessLabels(markdown[0], labelMap, duplicateLabels);
 
     expect(result).toEqual('In section 1');
     
-    result = preprocessLabels(markdown[1], empty);
+    result = preprocessLabels(markdown[1], labelMap, duplicateLabels);
     expect(result).toEqual('## 1 Foo');
 
   });
@@ -141,12 +146,12 @@ describe('mdx cross-references', () => {
     const markdown = '$$\int_0^10 x^2 dx \tag{@eq:one}'
     const tracker = makeMockTracker([markdown]);
 
-    scanLabels(tracker);
+    const [ labelMap, duplicateLabels ] = scanLabels(tracker);
 
-    expect(gLabelMap.has('eq:one')).toBe(true);
-    expect(gLabelMap.get('eq:one')).toEqual({ name: 'eq', id: 'one', n: 1 });
+    expect(labelMap.has('eq:one')).toBe(true);
+    expect(labelMap.get('eq:one')).toEqual(1);
 
-    const result = preprocessLabels(markdown, empty);
+    const result = preprocessLabels(markdown, labelMap, duplicateLabels);
     expect(result).toEqual('$$\int_0^10 x^2 dx \tag{1}');
   });
 
@@ -165,25 +170,26 @@ describe('mdx cross-references', () => {
       `];
     const tracker = makeMockTracker(markdown);
 
-    scanLabels(tracker);
+    const [ labelMap, duplicateLabels ] = scanLabels(tracker);
     
-    expect(gLabelMap.has('bar')).toBe(true);
-    expect(gLabelMap.get('bar')).toEqual({ name: null, id: 'bar', n: 2 });
+    expect(labelMap.has('bar')).toBe(true);
+    expect(labelMap.get('bar')).toEqual(2);
     
-    expect(gLabelMap.has('ex:bar')).toBe(true);
-    expect(gLabelMap.get('ex:bar')).toEqual({ name: 'ex', id: 'bar', n: 1 });
+    expect(labelMap.has('ex:bar')).toBe(true);
+    expect(labelMap.get('ex:bar')).toEqual(1);
     
-    expect(gLabelMap.has('foo')).toBe(true);
-    expect(gLabelMap.get('foo')).toEqual({ name: null, id: 'foo', n: 1 });
+    expect(labelMap.has('foo')).toBe(true);
+    expect(labelMap.get('foo')).toEqual(1);
     
-    expect(gLabelMap.has('a:foo')).toBe(true);
-    expect(gLabelMap.get('a:foo')).toEqual({ name: 'a', id: 'foo', n: 1 });
+    expect(labelMap.has('a:foo')).toBe(true);
+    expect(labelMap.get('a:foo')).toEqual(1);
     
-    expect(gLabelMap.has('ex:foo')).toBe(true);
-    expect(gLabelMap.get('ex:foo')).toEqual({ name: 'ex', id: 'foo', n: 2 });
+    expect(labelMap.has('ex:foo')).toBe(true);
+    expect(labelMap.get('ex:foo')).toEqual(2);
     
-    expect(gLabelMap.has('a:foo')).toBe(true);
-    expect(gLabelMap.get('a:foo')).toEqual({ name: 'a', id: 'foo', n: 1 });
+    expect(labelMap.size).toEqual(5);
+    expect(duplicateLabels.size).toEqual(1);
+    expect(duplicateLabels.has('foo'));
   });
 
   it('finds labels.', () => {

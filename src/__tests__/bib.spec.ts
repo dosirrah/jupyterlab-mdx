@@ -7,13 +7,10 @@ import {
   preprocessCitations,
   updateCitationMap,
   updateBibliography,
-  gCitationEntries
 } from '../bib';
 import { __testExports__ } from '../bib';
+import { BibInfo } from '../state';
 const {
-  gCitationOrder,
-  gCitationMap,
-  _bibCache,
   analyzeCitations,
   loadBibEntries
 } = __testExports__;
@@ -79,11 +76,6 @@ function makeMockTracker(texts: string[]): INotebookTracker {
 }
 
 describe('mdx citations', () => {
-  beforeEach(() => {
-    // reset global order and map
-    gCitationOrder.length = 0;
-    gCitationMap.clear();
-  });
 
   it('analyzeCitations finds simple keys', () => {
     const src = 'See ^foo and ^bar.';
@@ -95,10 +87,10 @@ describe('mdx citations', () => {
 
   it('analyzeCitations ignores math spans', () => {
     const src = '$x^2 + y^b$ and ^qux';
-    const cites = analyzeCitations(src);
-    expect(cites.has('2')).toBe(false);
-    expect(cites.has('b')).toBe(false);
-    expect(cites.has('qux')).toBe(true);
+    const citesSet = analyzeCitations(src);
+    expect(citesSet.has('2')).toBe(false);
+    expect(citesSet.has('b')).toBe(false);
+    expect(citesSet.has('qux')).toBe(true);
   });
 
   it('scanCitations collects citations in order', () => {
@@ -106,17 +98,20 @@ describe('mdx citations', () => {
       'First ^a then ^b',
       'Then ^c and repeat ^a'
     ]);
-    const order = scanCitations(tracker);
-    expect(order).toEqual(['a', 'b', 'c']);
-    expect(gCitationMap.get('a')).toEqual({ n: 1 });
-    expect(gCitationMap.get('b')).toEqual({ n: 2 });
-    expect(gCitationMap.get('c')).toEqual({ n: 3 });
+    const cites = scanCitations(tracker);
+    expect(cites).toEqual(['a', 'b', 'c']);
   });
 
   it('preprocessCitations replaces keys with numbers', () => {
     const tracker = makeMockTracker(['^x ^y']);
-    scanCitations(tracker);
-    const md = preprocessCitations('prefix ^x and ^y and ^z');
+    const cites = scanCitations(tracker);
+    const citationMap = new Map<string, number>();
+    cites.forEach((value, idx) => {
+      citationMap.set(value, idx+1);
+    });
+
+    const md = preprocessCitations('prefix ^x and ^y and ^z',
+                                   citationMap);
     // x->[1], y->[2], z undefined->[?]
     expect(md).toBe('prefix [1] and [2] and [?]');
   });
@@ -124,47 +119,62 @@ describe('mdx citations', () => {
   it('scanCitations handles text with no citations', () => {
     const texts = ['Hi there', 'The world', 'is great'];
     const tracker = makeMockTracker(texts);
-    scanCitations(tracker);
-    expect(gCitationOrder.length).toBe(0);
-    expect(gCitationMap.size).toBe(0);
+    const cites = scanCitations(tracker);
+    expect(cites.length).toBe(0);
   });
   
-  it('scanCitations across multiple cells updates gCitationOrder', () => {
+  it('scanCitations across multiple cells updates citationMap', () => {
     const texts = ['^foo', '^bar', '^baz'];
     const tracker = makeMockTracker(texts);
-    scanCitations(tracker);
-    expect(gCitationOrder).toEqual(['foo', 'bar', 'baz']);
-    expect(preprocessCitations('^bar')).toBe('[2]');
+    const cites = scanCitations(tracker);
+    expect(cites).toEqual(['foo', 'bar', 'baz']);
+    const citationMap = new Map<string, number>();
+    cites.forEach((value, idx) => {
+      citationMap.set(value, idx+1);
+    });
+
+    expect(preprocessCitations('^bar', citationMap)).toBe('[2]');
   });
 
   it('updateCitationMap detects added citations', () => {
     const tracker = makeMockTracker(['^a']);
-    scanCitations(tracker);
+    const cites = scanCitations(tracker);
+    const citationMap = new Map<string, number>();
+    cites.forEach((value, idx) => {
+      citationMap.set(value, idx+1);
+    });
     const cells = (tracker.currentWidget!.content.widgets as MarkdownCell[]);
     // Pretend editing the source to add ^b
     cells[0].model.sharedModel.setSource('^a ^b');
 
     const changed = updateCitationMap(
       cells[0] as any,
-      cells as any
+      cells as any,
+      citationMap
     );
     expect(Array.from(changed)).toContain('b');
-    expect(gCitationOrder).toEqual(['a', 'b']);
+    expect([...citationMap.keys()]).toEqual(['a','b']);
   });
 
   it('updateCitationMap detects removed citations', () => {
     const tracker = makeMockTracker(['^x ^y']);
-    scanCitations(tracker);
+    const cites = scanCitations(tracker);
+    const citationMap = new Map<string, number>();
+    cites.forEach((value, idx) => {
+      citationMap.set(value, idx+1);
+    });
+
     const cells = (tracker.currentWidget!.content.widgets as MarkdownCell[]);
     // old cites x,y -> now just x
     cells[0].model.sharedModel.setSource('^x');
 
     const changed = updateCitationMap(
       cells[0] as any,
-      cells as any
+      cells as any,
+      citationMap
     );
     expect(Array.from(changed)).toContain('y');
-    expect(gCitationOrder).toEqual(['x']);
+    expect([...citationMap.keys()]).toEqual(['x']);
   });
 });
 
@@ -278,15 +288,19 @@ describe('updateBibliography()', () => {
   const localB  = 'refs/b.bib';
 
   beforeEach(() => {
-    _bibCache.clear();
-    gCitationEntries.clear();
     jest.restoreAllMocks();
   });
 
   it('initial GET captures ETag and Last-Modified', async () => {
     const hdrs = {
+      // `get: jest.fn()` replaces the `get` function on `headResp.headers.get`
+      // with a mock function.
       get: jest.fn()
+        // `mockImplementationOnce` says return the associated result
+        // 'W/"v1"' the first time this mock function is called regardless
+        // of any arguments passed to the mock function.
         .mockImplementationOnce(() => 'W/"v1"')            // ETag
+        // on the second call to `get` return 'Tue, 01 Jan 2025'.
         .mockImplementationOnce(() => 'Tue, 01 Jan 2025')  // Last-Modified
     };
     global.fetch = jest.fn().mockResolvedValue({
@@ -295,14 +309,19 @@ describe('updateBibliography()', () => {
       headers: hdrs
     } as any);
 
+    const bibInfo : BibInfo = {
+      src: '',
+      entries: new Map<string, any>()
+    };
+    
     const cell = makeCell(remoteA);
-    const changed = await updateBibliography(cell as any, notebookPath);
+    const changed = await updateBibliography(cell as any, notebookPath,
+                                             bibInfo);
     expect(changed).toBe(true);
 
-    const info = _bibCache.get(remoteA)!;
-    expect(info.etag).toBe('W/"v1"');
-    expect(info.lastModified).toBe('Tue, 01 Jan 2025');
-    expect(gCitationEntries.has('smith2020')).toBe(true);
+    expect(bibInfo.etag).toBe('W/"v1"');
+    expect(bibInfo.lastModified).toBe('Tue, 01 Jan 2025');
+    expect(bibInfo.entries.has('smith2020')).toBe(true);  // from sampleBibA.
     expect(global.fetch).toHaveBeenCalledWith(remoteA);
   });
 
@@ -320,8 +339,13 @@ describe('updateBibliography()', () => {
         headers: { get: () => 'W/"v1"' }
       } as any);
 
+    const bibInfo : BibInfo = {
+      src: '',
+      entries: new Map<string, any>()
+    };
+    
     const cell = makeCell(remoteA);
-    await updateBibliography(cell as any, notebookPath);
+    await updateBibliography(cell as any, notebookPath, bibInfo);
 
     // 3) second call: HEAD only
     (global.fetch as jest.Mock).mockResolvedValueOnce({
@@ -329,7 +353,8 @@ describe('updateBibliography()', () => {
       headers: { get: () => 'W/"v1"' }
     } as any);
 
-    const changed2 = await updateBibliography(cell as any, notebookPath);
+    const changed2 = await updateBibliography(cell as any,
+                                              notebookPath, bibInfo);
     expect(changed2).toBe(false);
     // fetch called: 1×GET, 1×HEAD
     expect((global.fetch as jest.Mock).mock.calls.length).toBe(2);
@@ -348,12 +373,17 @@ describe('updateBibliography()', () => {
     } as any);
 
     const cell = makeCell(remoteA);
-    const changed = await updateBibliography(cell as any, notebookPath);
+    const bibInfo : BibInfo = {
+      src: '',
+      entries: new Map<string, any>()
+    };
+
+    const changed = await updateBibliography(cell as any, notebookPath,
+                                             bibInfo);
     expect(changed).toBe(true);
 
-    const info = _bibCache.get(remoteA)!;
-    expect(info.etag).toBeUndefined();
-    expect(info.lastModified).toBe('Wed, 02 Feb 2025');
+    expect(bibInfo.etag).toBeUndefined();
+    expect(bibInfo.lastModified).toBe('Wed, 02 Feb 2025');
   });
 
   it('HEAD same Last-Modified → false', async () => {
@@ -371,9 +401,15 @@ describe('updateBibliography()', () => {
       } as any);
 
     const cell = makeCell(remoteA);
-    await updateBibliography(cell as any, notebookPath);
+    const bibInfo : BibInfo = {
+      src: '',
+      entries: new Map<string, any>()
+    };
+    await updateBibliography(cell as any, notebookPath, bibInfo);
 
-    const changed2 = await updateBibliography(cell as any, notebookPath);
+    const changed2 = await updateBibliography(cell as any,
+                                              notebookPath,
+                                              bibInfo);
     expect(changed2).toBe(false);
   });
 
@@ -393,33 +429,56 @@ describe('updateBibliography()', () => {
       } as any);
 
     const cell = makeCell(remoteA);
-    await updateBibliography(cell as any, notebookPath);
+    const bibInfo : BibInfo = {
+      src: '',
+      entries: new Map<string, any>()
+    };
+    await updateBibliography(cell as any, notebookPath, bibInfo);
 
     // user edited the cell to a different URL textually
     cell.model.sharedModel.setSource(`::: bibliography\nsrc: ${remoteB}\n:::`);
 
-    const changed = await updateBibliography(cell as any, notebookPath);
+    const changed = await updateBibliography(cell as any,
+                                             notebookPath,
+                                             bibInfo);
     expect(changed).toBe(true);
     expect((global.fetch as jest.Mock).mock.calls.length).toBe(2);
   });
 
-  it('HEAD 404 clears entries & true', async () => {
-    global.fetch = jest.fn()
-      // initial GET
+
+  it('HEAD 404 throws an error', async () => {
+    global.fetch = jest
+      .fn()
+      // 1) Initial GET for a fresh bibInfo.src === ''
       .mockResolvedValueOnce({
         ok:      true,
         text:    () => Promise.resolve(sampleBibA),
         headers: { get: () => null }
       } as any)
-      // HEAD fail
-      .mockResolvedValueOnce({ ok: false, statusText: 'Not Found' } as any);
-
+      // 2) HEAD failure on the second call
+      .mockResolvedValueOnce({
+        ok:          false,
+        status:      404,
+        statusText: 'Not Found'
+      } as any);
+  
     const cell = makeCell(remoteA);
-    await updateBibliography(cell as any, notebookPath);
-
-    const changed4 = await updateBibliography(cell as any, notebookPath);
-    expect(changed4).toBe(true);
-    expect(gCitationEntries.size).toBe(0);
+    const bibInfo: BibInfo = {
+      src:     '',
+      entries: new Map()
+    };
+  
+    // 1st call does the GET & populates bibInfo.src → returns true
+    await expect(
+      updateBibliography(cell as any, notebookPath, bibInfo)
+    ).resolves.toBe(true);
+  
+    // Now bibInfo.src === remoteA, so the next invocation will do the HEAD
+    await expect(
+      updateBibliography(cell as any, notebookPath, bibInfo)
+    ).rejects.toThrow(
+      /Could not fetch bibliography at https:\/\/example\.com\/a\.bib: HEAD request failed with 404 Not Found/
+    );
   });
 
   it('initial local GET captures last_modified', async () => {
@@ -432,12 +491,17 @@ describe('updateBibliography()', () => {
       } as any);
 
     const cell = makeCell(localA);
-    const changed = await updateBibliography(cell as any, notebookPath);
-    expect(changed).toBe(true);
-    expect(gCitationEntries.has('smith2020')).toBe(true);
+    const bibInfo : BibInfo = {
+      src: '',
+      entries: new Map<string, any>()
+    };
 
-    const info = _bibCache.get(localA)!;
-    expect(info.lastModified).toBe('L1');
+    const changed = await updateBibliography(cell as any,
+                                             notebookPath,
+                                             bibInfo);
+    expect(changed).toBe(true);
+    expect(bibInfo.entries.has('smith2020')).toBe(true);
+    expect(bibInfo.lastModified).toBe('L1');
   });
 
   it('local metadata same → false', async () => {
@@ -451,7 +515,11 @@ describe('updateBibliography()', () => {
       } as any);
 
     const cell = makeCell(localA);
-    await updateBibliography(cell as any, notebookPath);
+    const bibInfo : BibInfo = {
+      src: '',
+      entries: new Map<string, any>()
+    };
+    await updateBibliography(cell as any, notebookPath, bibInfo);
 
     // metadata-only same
     const cmGet2 = jest.spyOn(ContentsManager.prototype, 'get')
@@ -461,8 +529,9 @@ describe('updateBibliography()', () => {
         format:        'text'
       } as any);
 
-    const changed2 = await updateBibliography(cell as any, notebookPath);
-    expect(changed2).toBe(false);
+    const changed = await updateBibliography(cell as any,
+                       notebookPath, bibInfo);
+    expect(changed).toBe(false);
   });
 
   it('local metadata changed → reload & true', async () => {
@@ -476,7 +545,11 @@ describe('updateBibliography()', () => {
       } as any);
 
     const cell = makeCell(localA);
-    await updateBibliography(cell as any, notebookPath);
+    const bibInfo : BibInfo = {
+      src: '',
+      entries: new Map<string, any>()
+    };
+    await updateBibliography(cell as any, notebookPath, bibInfo);
 
     // metadata-only changed, then full reload
     const spy = jest.spyOn(ContentsManager.prototype, 'get')
@@ -492,13 +565,15 @@ describe('updateBibliography()', () => {
         format:        'text'
       } as any);
 
-    const changed3 = await updateBibliography(cell as any, notebookPath);
-    expect(changed3).toBe(true);
-    expect(gCitationEntries.has('jones2021')).toBe(true);
+    const changed = await updateBibliography(cell as any,
+                       notebookPath, bibInfo);
+    expect(changed).toBe(true);
+    expect(bibInfo.entries.has('jones2021')).toBe(true);
   });
 
-  it('local get error clears & true', async () => {
-    // initial load
+
+  it('handles local get error by throwing', async () => {
+    // 1) initial load succeeds
     jest.spyOn(ContentsManager.prototype, 'get')
       .mockResolvedValueOnce({
         content:       sampleBibA,
@@ -506,18 +581,30 @@ describe('updateBibliography()', () => {
         type:          'file',
         format:        'text'
       } as any);
-
+  
     const cell = makeCell(localA);
-    await updateBibliography(cell as any, notebookPath);
-
-    // metadata-only throws
+    const bibInfo: BibInfo = {
+      src:     '',
+      entries: new Map<string, any>()
+    };
+    // Perform the initial load
+    await updateBibliography(cell as any, notebookPath, bibInfo);
+    // Confirm we have that entry
+    expect(bibInfo.entries.has('smith2020')).toBe(true);
+  
+    // 2) Now simulate a metadata‐only error
     jest.spyOn(ContentsManager.prototype, 'get')
       .mockRejectedValueOnce(new Error('No such file'));
-
-    const changed4 = await updateBibliography(cell as any, notebookPath);
-    expect(changed4).toBe(true);
-    expect(gCitationEntries.size).toBe(0);
+  
+    // Because the local metadata check throws, updateBibliography should reject
+    await expect(
+      updateBibliography(cell as any, notebookPath, bibInfo)
+    ).rejects.toThrow('No such file');
+  
+    // And since we threw, the existing entries should remain untouched
+    expect(bibInfo.entries.has('smith2020')).toBe(true);
   });
+
 
   it('local initial GET no last_modified then metadata-same → false', async () => {
     jest.spyOn(ContentsManager.prototype, 'get')
@@ -529,7 +616,11 @@ describe('updateBibliography()', () => {
       } as any);
 
     const cell = makeCell(localA);
-    await updateBibliography(cell as any, notebookPath);
+    const bibInfo : BibInfo = {
+      src: '',
+      entries: new Map<string, any>()
+    };
+    await updateBibliography(cell as any, notebookPath, bibInfo);
 
     const cm2 = jest.spyOn(ContentsManager.prototype, 'get')
       .mockResolvedValueOnce({
@@ -538,7 +629,8 @@ describe('updateBibliography()', () => {
         // still no last_modified
       } as any);
 
-    const changed = await updateBibliography(cell as any, notebookPath);
+    const changed = await updateBibliography(cell as any,
+                       notebookPath, bibInfo);
     expect(changed).toBe(false);
   });
 
@@ -553,7 +645,11 @@ describe('updateBibliography()', () => {
       } as any);
 
     const cell = makeCell(localA);
-    await updateBibliography(cell as any, notebookPath);
+    const bibInfo : BibInfo = {
+      src: '',
+      entries: new Map<string, any>()
+    };
+    await updateBibliography(cell as any, notebookPath, bibInfo);
 
     // metadata-only same
     jest.spyOn(ContentsManager.prototype, 'get')
@@ -567,7 +663,8 @@ describe('updateBibliography()', () => {
     // user edits src line but to different path
     cell.model.sharedModel.setSource(`::: bibliography\nsrc: ${localB}\n:::`);
 
-    const changed = await updateBibliography(cell as any, notebookPath);
+    const changed = await updateBibliography(cell as any,
+                       notebookPath, bibInfo);
     expect(changed).toBe(true);
     expect((global.fetch as jest.Mock).mock.calls.length).toBe(2);
 

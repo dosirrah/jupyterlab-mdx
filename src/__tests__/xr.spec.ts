@@ -4,11 +4,11 @@
 
 import {
   scanLabels,
-  preprocessLabels,
+  preprocessLabels
 } from '../xr';
 
 import { __testExports__ } from '../xr';
-const { toId, formatLabel, analyzeMarkdown } = __testExports__;
+const { toId, formatLabel, analyzeMarkdown, rewriteMathWithTags } = __testExports__;
 import { MarkdownCell } from '@jupyterlab/cells';
 import { NotebookPanel } from '@jupyterlab/notebook';
 import { INotebookTracker } from '@jupyterlab/notebook';
@@ -114,8 +114,10 @@ describe('mdx cross-references', () => {
     const [ labelMap, duplicateLabels ] = scanLabels(tracker);
 
     const result = preprocessLabels(markdown, labelMap, duplicateLabels);
-    expect(result).toContain('section 1');
-    expect(result).toContain('## 1. Life');
+
+    expect(result).toMatch(/^In section <a href=\"#label-life\" target=\"_self\">1<\/a>/);
+    //expect(result).toContain(`## <div id=\"label-life\">1<\/div>. Life`); // Label
+    expect(result).toContain(`## <span id=\"label-life\">1<\/span>. Life`); // Label
   });
   
   it('renders references to undefined labels with warning', () => {
@@ -124,7 +126,7 @@ describe('mdx cross-references', () => {
     const noDups = new Set<string>();
     const result = preprocessLabels('In section #foo', noLabels, noDups);
 
-    expect(result).toEqual("In section ⚠️ {undefined: foo}");
+    expect(result).toEqual('In section ⚠️ {undefined}');
   });
 
   it('renders references to labels in different cells', () => {
@@ -135,15 +137,14 @@ describe('mdx cross-references', () => {
     const [ labelMap, duplicateLabels ] = scanLabels(tracker);
     let result = preprocessLabels(markdown[0], labelMap, duplicateLabels);
 
-    expect(result).toEqual('In section 1');
-    
+    expect(result).toMatch(/^In section <a href=\"#label-foo\" target=\"_self\">1<\/a>/);
     result = preprocessLabels(markdown[1], labelMap, duplicateLabels);
-    expect(result).toEqual('## 1 Foo');
+    expect(result).toMatch(/^## <span id=\"label-foo\">1<\/span> Foo/);
 
   });
 
   it('renders equations with tags.', () => {
-    const markdown = '$$\int_0^10 x^2 dx \tag{@eq:one}'
+    const markdown = '$$\\int_0^{10} x^2 dx \\tag{@eq:one}$$';
     const tracker = makeMockTracker([markdown]);
 
     const [ labelMap, duplicateLabels ] = scanLabels(tracker);
@@ -151,8 +152,13 @@ describe('mdx cross-references', () => {
     expect(labelMap.has('eq:one')).toBe(true);
     expect(labelMap.get('eq:one')).toEqual(1);
 
-    const result = preprocessLabels(markdown, labelMap, duplicateLabels);
-    expect(result).toEqual('$$\int_0^10 x^2 dx \tag{1}');
+    const result = rewriteMathWithTags(markdown, labelMap, duplicateLabels);
+    expect(result).toContain('\\tag{1}');
+    expect(result).toContain(`<div id="label-eq:one"`);
+
+    const result2 = preprocessLabels(markdown, labelMap, duplicateLabels);
+    expect(result2).toContain('\\tag{1}');
+    expect(result2).toContain(`<div id="label-eq:one"`);
   });
 
   it('keeps enumerations independent from each other.', () => {

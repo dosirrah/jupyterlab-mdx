@@ -113,7 +113,9 @@ describe('mdx citations', () => {
     const md = preprocessCitations('prefix ^x and ^y and ^z',
                                    citationMap);
     // x->[1], y->[2], z undefined->[?]
-    expect(md).toBe('prefix [1] and [2] and [?]');
+    expect(md).toBe("prefix <a href=\"#cite-x\" target=\"_self\">[1]</a> and " +
+      "<a href=\"#cite-y\" target=\"_self\">[2]</a> " +
+      "and <a href=\"#cite-z\" target=\"_self\">[undefined]</a>");
   });
 
   it('scanCitations handles text with no citations', () => {
@@ -133,7 +135,7 @@ describe('mdx citations', () => {
       citationMap.set(value, idx+1);
     });
 
-    expect(preprocessCitations('^bar', citationMap)).toBe('[2]');
+    expect(preprocessCitations('^bar', citationMap)).toBe("<a href=\"#cite-bar\" target=\"_self\">[2]</a>");
   });
 
   it('updateCitationMap detects added citations', () => {

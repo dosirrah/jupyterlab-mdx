@@ -96,7 +96,8 @@ export function preprocessCitations(markdown: string,
   // 2) Replace each ^KEY with its [n] from citationMap
   const withNumbers = withoutMath.replace(/\^([A-Za-z0-9_-]+)/g, (_, key) => {
     const n = citationMap.get(key);
-    return n ? `[${n}]` : `[?]`;
+    //const safe_key = encodeURIComponent(key);
+    return `<a href="#cite-${key}" target="_self">[${n}]</a>`;
   });
 
   // 3) Restore math spans
@@ -447,7 +448,7 @@ function formatACM(entry: any): string {
     : tags.booktitle 
       ? ` *${tags.booktitle}*`
       : '';
-  const vol      = tags.volume ? ` **${tags.volume}**` : '';
+  const vol      = tags.volume ? ` <strong>${tags.volume}</strong>` : '';
   const num      = tags.number ? `, ${tags.number}` : '';
   const date     = tags.month 
     ? ` (${tags.month} ${tags.year})` 
@@ -484,9 +485,10 @@ export function generateBibliography(md: string,
   const lines = citations.map((key, idx) => {
     const entry = bibMap.get(key);
     if (!entry) {
-      return `${idx + 1}. **[?]** Missing entry for \`${key}\``;
+      return `<div id="cite-${key}"><strong>[${idx + 1}]</strong>. Missing entry for \`${key}\`</div>`;
     }
-    return `${idx + 1}. ${formatACM(entry)}`;
+    return `<div id="cite-${key}">[${idx + 1}] ${formatACM(entry)}</div>`;
+
   });
 
   // 3) Replace just that placeholder block with our formatted list

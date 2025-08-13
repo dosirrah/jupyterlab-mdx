@@ -110,7 +110,7 @@ function analyzeMarkdown(src: string): CellXRMeta {
   const duplicateLabels = new Set<string>();
 
   // Match labels: @eq:foo or @foo
-  const labelRe = /@([A-Za-z]+:)?([A-Za-z0-9:_\-]+)/g;
+  const labelRe = /@([A-Za-z0-9_\-]+:)?([A-Za-z0-9_\-]+)/g;
   let match;
   while ((match = labelRe.exec(src)) !== null) {
     const name = match[1] ? match[1].slice(0, -1) : null;
@@ -123,7 +123,7 @@ function analyzeMarkdown(src: string): CellXRMeta {
   }
 
   // Match references: #eq:foo or #foo
-  const refRe = /#([A-Za-z]+:)?([A-Za-z0-9:_\-]+)/g;
+  const refRe = /#([A-Za-z0-9_\-]+:)?([A-Za-z0-9_\-]+)/g;
   while ((match = refRe.exec(src)) !== null) {
     const name = match[1] ? match[1].slice(0, -1) : null;
     const id = match[2];
@@ -133,50 +133,116 @@ function analyzeMarkdown(src: string): CellXRMeta {
   return { labelsDefined, labelsReferenced, duplicateLabels };
 }
 
+
+function rewriteMathWithTags(
+  segment: string,
+  labelMap: Map<string, number>,
+  duplicateLabels: Set<string>
+): string {
+  // segment is guaranteed to be either:
+  //   $$…$$   or   \[…\]
+  // both open and close delimiters are exactly 2 chars long.
+  
+  // 1) peel off delimiters:
+  const openDelim  = segment.slice(0, 2);             // "$$" or "\["
+  const closeDelim = segment.slice(-2);               // "$$" or "\]"
+  const inner      = segment.slice(2, -2);            // content between them
+
+  // 2) replace @labels inside that inner text:
+  const labRe = /@([A-Za-z]+:)?([A-Za-z0-9:_\-]+)(!?)/g;
+  const divs: string[] = [];
+  
+  const replacedInner = inner.replace(labRe, (_m, enumName, id) => {
+    const name = enumName ? enumName.slice(0, -1) : null;
+    const key  = toId(name, id);
+    const num  = labelMap.get(key) ?? "??";
+
+    if (duplicateLabels.has(key)) {
+      return `⚠️ {duplicate ${key}}`;
+    }
+    divs.push(`<div id="label-${key}"></div>`);
+    return `${num}`;
+  });
+
+  // 3) reassemble: any <div>… above, then the math block
+  return divs.join("\n") + openDelim + replacedInner + closeDelim;
+}
+
 /**
  * Finds all labels and references in the given markdown text and replaces them with:
  * - The corresponding number (for valid labels or references),
- * - '⚠️ {undefined: ...}' if a reference does not match any known label,
- * - '⚠️ {duplicate: ...}' if a label is known to be duplicated.
+ * - '⚠️ {undefined ...}' if a reference does not match any known label,
+ * - '⚠️ {duplicate ...}' if a label is known to be duplicated.
  *
  * @param markdown - Markdown text potentially containing labels (e.g., @foo) or 
  *                   references (e.g., #foo).
  * @param duplicateLabels - Set of labels known to appear more than once in the document.
  * @returns Transformed markdown with each label or reference replaced appropriately.
  */
+/**
+ * Top‐level markdown preprocessor:
+ * - Splits on math (display vs inline),
+ * - For display‐math segments → calls rewriteMathWithTags(),
+ * - For inline‐math → leaves as-is,
+ * - For plain text → does your @/# → <span>/<a> replacement.
+ */
 export function preprocessLabels(
-                  markdown: string,
-                  labelMap: Map<string, number>,
-                  duplicateLabels: Set<string>): string {
-  const re = /(@|#)([A-Za-z]+:)?([A-Za-z0-9:_\-]+)(!?)/g;
+  markdown: string,
+  labelMap: Map<string, number>,
+  duplicateLabels: Set<string>
+): string {
+  // split on any math block:
+  //  - $$…$$
+  //  - \[…\]
+  //  - \(...\)
+  //  - $…$
+  const mathSplitRe = /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\([\s\S]*?\\\)|\$(?:\\.|[^\$\\])+\$)/g;
 
-  return markdown.replace(re, (full, sym, enumName, id, bang) => {
-    const name = enumName ? enumName.slice(0, -1) : null;
-    const key = toId(name, id);
-    const n = labelMap.get(key);
+  // helpers to detect display vs inline
+  const displayRe = /^\$\$[\s\S]*\$\$$|^\\\[[\s\S]*\\\]$/;
+  const inlineRe  = /^\$(?:\\.|[^\$\\])+\$$|^\\\([\s\S]*?\\\)$/;
 
-    if (duplicateLabels.has(key)) {
-        return `⚠️ {duplicate: ${key}}`
-    }
-    
-    if (!n) {
-      return `⚠️ {undefined: ${key}}`;
-    }
+  // your original @/# replacer
+  const refRe = /(@|#)([A-Za-z]+:)?([A-Za-z0-9:_\-]+)(!?)/g;
 
-    if (sym === '@') {
-      // Replace with raw number or formatted (e.g., (3)) if taggable
-      return formatLabel(name, n, /* raw= */ true);
-    }
+  return markdown
+    .split(mathSplitRe)
+    .map(segment => {
+      if (displayRe.test(segment)) {
+        // display math → do the tag rewrite
+        return rewriteMathWithTags(segment, labelMap, duplicateLabels);
+      }
+      if (inlineRe.test(segment)) {
+        // inline math → leave untouched
+        return segment;
+      }
+      // plain text → do @/# → <span> / <a>
+      return segment.replace(
+        refRe,
+        (full, sym, enumName, id, bang) => {
+          const name = enumName ? enumName.slice(0, -1) : null;
+          const key = toId(name, id);
+          const num = labelMap.get(key);
 
-    if (sym === '#') {
-      // Replace with cross-reference
-      return formatLabel(name, n, /* raw= */ false);
-    }
+          if (duplicateLabels.has(key)) {
+            return `⚠️ {duplicate}`;
+          }
+          if (!num) {
+            return `⚠️ {undefined}`;
+          }
 
-    return full;
-  });
+          if (sym === '@') {
+            const txt = formatLabel(name, num, /* raw= */ true);
+            return `<span id="label-${key}">${txt}</span>`;
+          } else {
+            const txt = formatLabel(name, num, /* raw= */ false);
+            return `<a href="#label-${key}" target="_self">${txt}</a>`;
+          }
+        }
+      );
+    })
+    .join('');
 }
-
 
 /**
  * Updates the notebook's labelMap after an edit to a single Markdown cell.
@@ -342,5 +408,6 @@ function computeChangedLabels(
 export const __testExports__ = {
   toId,
   formatLabel,
-  analyzeMarkdown
+  analyzeMarkdown,
+  rewriteMathWithTags
 };

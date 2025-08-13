@@ -95,8 +95,8 @@ function rerenderSingleMarkdownCell(
 
   let md = cell.model.sharedModel.getSource();
   const mimeType = 'text/markdown';
-  md = preprocessLabels(md, labelMap, duplicateLabels);
-  md = preprocessCitations(md, citationMap);
+  //md = preprocessLabels(md, labelMap, duplicateLabels);
+  //md = preprocessCitations(md, citationMap);
 
   const model = {
     data: { [mimeType]: md},
@@ -390,6 +390,7 @@ export function rerenderAllMarkdown(tracker: INotebookTracker, rendermime: IRend
     requestAnimationFrame(tryRender);
   }
 }
+*/
 
 
 /* Fails to rerender with the output "Could not find .jp-RenderedMarkdown in cell: ..."

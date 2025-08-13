@@ -169,7 +169,7 @@ function wrapNotebookActions(tracker: INotebookTracker,
            *   // have been ready every time we reached this part of the code.
            *   //await panel.context.ready;                        // make sure it’s loaded
            *   //const notebookModel = panel.context.model;
-           *   ////const notebookMeta = notebookModel.metadata;               // no cast needed here
+           *   ////const notebookMeta = notebookModel.metadata;   // no cast needed here
            *   //const metadata = notebookModel.metadata as unknown as IObservableJSON;
            *   //const raw = metadata.get(MDX_META_KEY) as { bibInjected?: boolean } | undefined;
            * 
@@ -403,8 +403,7 @@ async function findBib(dirPath: string): Promise<string | null> {
  * Scan the entire document for labels, references, and citations.
  * If no bibliography cell exists then append one to the end.
  */
-function scanAll(tracker: INotebookTracker, notebookPanel: NotebookPanel,
-                 bibSrc: string | null) {
+async function scanAll(tracker: INotebookTracker, notebookPanel: NotebookPanel) {
   //console.log("s1 ScanAll bibSrc:", bibSrc);
   const xrState = (notebookPanel as any).xrState;
   //console.log("s2 ScanAll calling scanLabels");
@@ -420,7 +419,21 @@ function scanAll(tracker: INotebookTracker, notebookPanel: NotebookPanel,
   cites.forEach((value, idx) => {
     citationMap.set(value, idx+1);
   });
+
+  if (!xrState.bibInjected) {
+    const notebookPath = notebookPanel.context.path;
+    const notebookDir = PathExt.dirname(notebookPath);
+    
+    // Try to locate the first .bib under that directory:
+    const bibSrc = await findBib(notebookDir);
   
+    injectIfNoBibliography(tracker, notebookPanel, bibSrc);
+    xrState.bibInjected = true;
+    const widgets = notebookPanel.content.widgets;
+    const newCell = widgets[widgets.length - 1] as MarkdownCellWithXR;
+    await updateBibliography(newCell, notebookPath, xrState.bibInfo);
+  }
+
   //console.log("s4 ScanAll cites.length", cites.length);
   //console.log("s5 scanAll citationMap.size", citationMap.size);
 }
@@ -466,18 +479,12 @@ const plugin: JupyterFrontEndPlugin<void> = {
       const xrState = new XRState(notebookPanel);
       (notebookPanel as any).xrState = xrState;
 
-      // create a bib markdown cell if one doesn't already exist
-      // and load the bibtex file.
-      // HERE: find nearest .bib file recursively from current notebook directory
-      const notebookPath = notebookPanel.context.path;
-      const notebookDir = PathExt.dirname(notebookPath);
-      
-      // Try to locate the first .bib under that directory:
-      const bibSrc = await findBib(notebookDir);
+      // perform an initial pass to scan for labels, references, and citations.
+      await scanAll(tracker, notebookPanel);
+      const m = xrState.citationMap;
+      console.log(`ac5 jupyterlab-mdx after scanAll. citationMap ` +
+        `key-values: ${Array.from(m.entries())}` );
 
-      scanAll(tracker, notebookPanel, bibSrc);
-      
-      //console.log("ac5 jupyterlab-mdx rerenderAllMarkdown");
       await rerenderAllMarkdown(tracker, rendermime, latex, xrState.labelMap,
                                 xrState.duplicateLabels, xrState.citationMap);
 
@@ -485,7 +492,7 @@ const plugin: JupyterFrontEndPlugin<void> = {
       let rerenderScheduled = false;
 
       // React to reorder or deletion
-      notebook.model?.cells.changed.connect((_, change) => {
+      notebook.model?.cells.changed.connect( (_, change) => {
         if (['add', 'remove'].includes(change.type)) {
           if (!rerenderScheduled) {
             rerenderScheduled = true;
@@ -493,10 +500,10 @@ const plugin: JupyterFrontEndPlugin<void> = {
             // allow the second change to occur before calling scanLabels and rerenderAllMarkdown.
             // If there is only a remove, requestAnimationFrame() will still be called back
             // triggering just the removal to be handled.
-            requestAnimationFrame(() => {
+            requestAnimationFrame(async () => {
               rerenderScheduled = false;
               console.log("🔄 Detected cell add/remove — rescanning & rerendering...");
-              scanAll(tracker, notebookPanel, bibSrc);
+              await scanAll(tracker, notebookPanel);
               rerenderAllMarkdown(tracker, rendermime, latex, xrState.labelMap,
                                   xrState.duplicateLabels, xrState.citationMap);
             });

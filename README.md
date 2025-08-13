@@ -97,6 +97,31 @@ More precisely, the JupyterLab helper [Galata](https://github.com/jupyterlab/jup
 
 More information are provided within the [ui-tests](./ui-tests/README.md) README.
 
+### Future
+
+Add hierarchical enumerations.  @foo/bar would be a named enumeration foo
+with the number assigned to @foo followed by period and 
+a number assigned to bar within the namespace of foo. For example,
+
+"""
+    # @foo About Foo.
+
+    ## @foo/intro Introduction
+
+    ## @foo/related Related Work
+"""
+
+woudl appear as 
+
+"""
+   1. About Foo     // formatted as title.
+   
+   1.1 Introduction  // formatted as section.
+
+   1.2 Related Work  // formatted as section.
+""" 
+
+
 ### Packaging the extension
 
 See [RELEASE](RELEASE.md)

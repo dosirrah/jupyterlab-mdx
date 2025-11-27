@@ -3,16 +3,16 @@
 #
 # This builds the image.
 #
-#     docker-compose build
+#     docker compose build
 #
 # This runs the container in which jupyter-lab executes with the mdx extension.
 #
-#     docker-compose up -d
+#     docker compose up -d
 #
 # To begin developemnt after cloning this repo to your local system,
 # do the following fro mthe root directory of the repo:
 #
-#     docker-compose exec jupyter bash
+#     docker compose exec jupyter bash
 #
 #     cd /home/jovyan/jupyterlab-mdx
 #

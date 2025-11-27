@@ -111,6 +111,19 @@ ENV PATH="$VENV_DIR/bin:${PATH}"
 RUN python -m venv /home/jovyan/.venv && \
     /home/jovyan/.venv/bin/pip install --upgrade pip setuptools wheel jupyterlab
 
+# good packages to have for doing some minimalist data science.
+RUN /home/jovyan/.venv/bin/pip install \
+    numpy \
+    pandas \
+    scipy \
+    statsmodels \
+    matplotlib \
+    seaborn \
+    plotly \
+    scikit-learn \
+    tqdm \
+    ipywidgets
+  
 # 4. Copy only the built wheel from Stage 1
 COPY --chown=jovyan:jovyan --from=build-node /home/jovyan/jupyterlab-mdx/dist/*.whl /tmp/
 

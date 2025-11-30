@@ -1,6 +1,5 @@
 import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application';
 import { INotebookTracker, Notebook, NotebookActions, NotebookPanel } from '@jupyterlab/notebook';
-import { INotebookModel } from '@jupyterlab/notebook';
 import { MarkdownCell } from '@jupyterlab/cells';
 import { scanLabels, preprocessLabels, updateLabelMap } from './xr';
 import { rerenderAffected, rerenderAllMarkdown } from './render';
@@ -13,7 +12,7 @@ import { ISessionContext } from '@jupyterlab/apputils';
 import { ContentsManager } from '@jupyterlab/services';
 import { PathExt } from '@jupyterlab/coreutils';
 import { XRState } from './state';
-import { IObservableJSON } from '@jupyterlab/observables';
+import { showErrorMessage } from '@jupyterlab/apputils'
 
 // We only want to ever inject a bibliography once per document.  If it is
 // deleted then we accept the user's decision.
@@ -101,155 +100,161 @@ function wrapNotebookActions(tracker: INotebookTracker,
           xrState.citationMap
         );
         //console.log("a9 changedCitations ", changedCitations);
-
-        if (xrState.citationMap.size > 0) {
-        
-          /* Attempting to only inject a bibliography cell but once by saving
-           * the state in the ipynb file using the notebook's metadata field.
-           * It seems to be quite difficult to use this field.  For now,
-           * I will only remember within a single session to inject a
-           * bibliography but once.
-           *
-           * if (!panel.model) {
-           *   console.warn('No notebook model; skipping bib injection');
-           * } else {
-           *   const model = panel.model!;   // The ! asserts that model is defined.
-           * 
-           *    
-           *   // FAIL. Conversion of type 'INotebookMetadata' to type 'IObservableJSON' may be
-           *   // a mistake because neither type sufficiently overlaps with the other.
-           *   // If this was intentional, convert the expression to 'unknown' first.
-           *   //const metadata = panel.model!.metadata as IObservableJSON;
-           * 
-           *   // FAIL. Uncaught (in promise) TypeError: e.get is not a function
-           *   //const metadata = panel.model!.metadata as unknown as IObservableJSON;
-           *   //const raw = metadata.get(MDX_META_KEY) as { bibInjected?: boolean } | undefined;
-           * 
-           *   // FAIL. Conversion of type 'INotebookMetadata' to type 'IObservableJSON'
-           *   // may be a mistake because neither type sufficiently overlaps with the other.
-           *   // If this was intentional, convert the expression to 'unknown' first.
-           *   //const metadata = panel.context.model.metadata as IObservableJSON;
-           *   
-           *   // FAIL. Cannot invoke an object which is possibly 'null' or 'undefined'.
-           *   //const notebookModel = panel.context.model as INotebookModel;
-           *   //const metadata      = notebookModel.metadata;
-           *   //const raw = metadata.get(MDX_META_KEY) as { bibInjected?: boolean } | undefined;
-           * 
-           *   // FAIL. Cannot invoke an object which is possibly 'null' or 'undefined'.
-           *   //const metadata = panel.model!.metadata;     // IObservableJSON
-           *   //const raw       = metadata?.get(MDX_META_KEY) as IMdxMeta | undefined;
-           * 
-           *   // FAIL!
-           *   //const metadata = panel.model!.metadata;     // IObservableJSON
-           *   //if (metadata) {
-           *   //  // FAIL This expression is not callable.
-           *   //  // No constituent of type 'string | number | boolean | PartialJSONObject |
-           *   //  // PartialJSONArray' is callable.
-           *   //  const raw       = metadata.get!(MDX_META_KEY) as IMdxMeta | undefined;
-           * 
-           *   // FAIL! Uncaught (in promise) TypeError: e.get is not a function
-           *   //const metadata = (panel.model!.metadata as any) as IObservableJSON;
-           *   //
-           *   //if  (metadata) {
-           *   //  const raw        = metadata.get(MDX_META_KEY) as IMdxMeta | undefined;
-           * 
-           *   // FAIL!
-           *   //const notebookModel = panel.content.model! as INotebookModel;
-           *   //const metadata     = notebookModel.metadata;   // this *is* an IObservableJSON
-           *   //if (metadata) {
-           *   //  const raw       = metadata.get(MDX_META_KEY) as IMdxMeta | undefined;
-           * 
-           *   // FAIL! Uncaught (in promise) TypeError: e.get is not a function
-           *   //const notebookModel = panel.context.model;
-           *   //const metadata = notebookModel.metadata as unknown as IObservableJSON;
-           *   //const raw = metadata.get(MDX_META_KEY) as { bibInjected?: boolean } | undefined;
-           * 
-           *   // FAIL~ Uncaught (in promise) TypeError: e.get is not a function.
-           *   // It seems waiting for it to be ready is immaterial. It may already
-           *   // have been ready every time we reached this part of the code.
-           *   //await panel.context.ready;                        // make sure it’s loaded
-           *   //const notebookModel = panel.context.model;
-           *   ////const notebookMeta = notebookModel.metadata;   // no cast needed here
-           *   //const metadata = notebookModel.metadata as unknown as IObservableJSON;
-           *   //const raw = metadata.get(MDX_META_KEY) as { bibInjected?: boolean } | undefined;
-           * 
-           *   // FAIL! Cannot invoke an object which is possibly 'null' or 'undefined'.
-           *   //await panel.context.ready  
-           *   //const nbModel = panel.content.model!;   
-           *   //const notebookMeta = nbModel.metadata;   // <-- THIS is an IObservableJSON?
-           *   //const raw = notebookMeta.get(MDX_META_KEY) as { bibInjected?: boolean } | undefined;
-           * 
-           *   // FAIL!  Cannot invoke an object which is possibly 'null' or 'undefined'.
-           *   //const nbModel = panel.model as INotebookModel;
-           *   //const meta    = nbModel.metadata;             // <-- IObservableJSON?
-           *   //const raw     = meta.get(MDX_META_KEY) as { bibInjected?: boolean } | undefined;
-           *   
-           *   // FAIL!
-           *   //const raw = (model.metadata as any)[MDX_META_KEY];
-           *   //const metadata: IMdxMeta = raw && typeof raw === 'object'
-           *   //  ? (raw as IMdxMeta)
-           *   //  : {};
-           * 
-           *   // FAIL!
-           *   //const metadata = model.metadata as any;  
-           *   //const raw = metadata.get(MDX_META_KEY) as IMdxMeta | undefined;
-           *   
-           *   //const bibInjected = raw?.bibInjected ?? false;
-           * 
-           *   // only inject a bibliography once
-           *   if (!bibInjected) {
-           *     // create a bib markdown cell if one doesn't already exist add one.
-           *     // HERE: find nearest .bib file recursively from current notebook directory
-           *     const notebookPath = panel.context.path;
-           *     const notebookDir = PathExt.dirname(notebookPath);
-           *     
-           *     // Try to locate the first .bib under that directory:
-           *     const bibSrc = await findBib(notebookDir);
-           *   
-           *     injectIfNoBibliography(tracker, panel, bibSrc);
-           *     
-           *     //metadata.bibInjected = true;
-           *     //(model.metadata as any)[MDX_META_KEY] = meta;
-           *     //panel.model!.metadata.set(MDX_META_KEY, { bibInjected: true });
-           *     metadata.set(MDX_META_KEY, { bibInjected: true });
-           *   
-           *     const widgets = panel.content.widgets;
-           *     const newCell = widgets[widgets.length - 1] as MarkdownCellWithXR;
-           *     bibChanged = await updateBibliography(newCell, notebookPath, xrState.bibInfo);
-           *   }
-           * }
-           */
-
-          // PARTIAL SUCCESS. Save state in xrState.bibInjected rather than in
-          // the NotebookPanel object's metadata.  If I had figured out how
-          // to use the NotebookPanel's metdata, it would have saved the fact that
-          // I had injected a bibliography with the ipynb file, and thus if the
-          // user had deleted the bibliography intentionally, it would honor
-          // the user's choice forever for that document.  Now I save bibInjected
-          // within xrState which only persists for a single session. Thus,
-          // it will only try to insert a bibliography once per document per session.
-
-          //console.log("a10 xrState.bibinjected:", xrState.bibInjected);
-          if (!xrState.bibInjected) {
-            const notebookPath = panel.context.path;
-            const notebookDir = PathExt.dirname(notebookPath);
-            
-            // Try to locate the first .bib under that directory:
-            const bibSrc = await findBib(notebookDir);
-            //console.log("a11 calling injectIfNoBibliography bibSrc:", bibSrc);
+        try {
+          if (xrState.citationMap.size > 0) {
           
-            injectIfNoBibliography(tracker, panel, bibSrc);
-            xrState.bibInjected = true;
-            const widgets = panel.content.widgets;
-            const newCell = widgets[widgets.length - 1] as MarkdownCellWithXR;
-            //console.log("a12 calling updateBibliography");
-            bibChanged = await updateBibliography(newCell, notebookPath, xrState.bibInfo);
-          }
-        }   
+            /* Attempting to only inject a bibliography cell but once by saving
+            * the state in the ipynb file using the notebook's metadata field.
+            * It seems to be quite difficult to use this field.  For now,
+            * I will only remember within a single session to inject a
+            * bibliography but once.
+            *
+            * if (!panel.model) {
+            *   console.warn('No notebook model; skipping bib injection');
+            * } else {
+            *   const model = panel.model!;   // The ! asserts that model is defined.
+            * 
+            *    
+            *   // FAIL. Conversion of type 'INotebookMetadata' to type 'IObservableJSON' may be
+            *   // a mistake because neither type sufficiently overlaps with the other.
+            *   // If this was intentional, convert the expression to 'unknown' first.
+            *   //const metadata = panel.model!.metadata as IObservableJSON;
+            * 
+            *   // FAIL. Uncaught (in promise) TypeError: e.get is not a function
+            *   //const metadata = panel.model!.metadata as unknown as IObservableJSON;
+            *   //const raw = metadata.get(MDX_META_KEY) as { bibInjected?: boolean } | undefined;
+            * 
+            *   // FAIL. Conversion of type 'INotebookMetadata' to type 'IObservableJSON'
+            *   // may be a mistake because neither type sufficiently overlaps with the other.
+            *   // If this was intentional, convert the expression to 'unknown' first.
+            *   //const metadata = panel.context.model.metadata as IObservableJSON;
+            *   
+            *   // FAIL. Cannot invoke an object which is possibly 'null' or 'undefined'.
+            *   //const notebookModel = panel.context.model as INotebookModel;
+            *   //const metadata      = notebookModel.metadata;
+            *   //const raw = metadata.get(MDX_META_KEY) as { bibInjected?: boolean } | undefined;
+            * 
+            *   // FAIL. Cannot invoke an object which is possibly 'null' or 'undefined'.
+            *   //const metadata = panel.model!.metadata;     // IObservableJSON
+            *   //const raw       = metadata?.get(MDX_META_KEY) as IMdxMeta | undefined;
+            * 
+            *   // FAIL!
+            *   //const metadata = panel.model!.metadata;     // IObservableJSON
+            *   //if (metadata) {
+            *   //  // FAIL This expression is not callable.
+            *   //  // No constituent of type 'string | number | boolean | PartialJSONObject |
+            *   //  // PartialJSONArray' is callable.
+            *   //  const raw       = metadata.get!(MDX_META_KEY) as IMdxMeta | undefined;
+            * 
+            *   // FAIL! Uncaught (in promise) TypeError: e.get is not a function
+            *   //const metadata = (panel.model!.metadata as any) as IObservableJSON;
+            *   //
+            *   //if  (metadata) {
+            *   //  const raw        = metadata.get(MDX_META_KEY) as IMdxMeta | undefined;
+            * 
+            *   // FAIL!
+            *   //const notebookModel = panel.content.model! as INotebookModel;
+            *   //const metadata     = notebookModel.metadata;   // this *is* an IObservableJSON
+            *   //if (metadata) {
+            *   //  const raw       = metadata.get(MDX_META_KEY) as IMdxMeta | undefined;
+            * 
+            *   // FAIL! Uncaught (in promise) TypeError: e.get is not a function
+            *   //const notebookModel = panel.context.model;
+            *   //const metadata = notebookModel.metadata as unknown as IObservableJSON;
+            *   //const raw = metadata.get(MDX_META_KEY) as { bibInjected?: boolean } | undefined;
+            * 
+            *   // FAIL~ Uncaught (in promise) TypeError: e.get is not a function.
+            *   // It seems waiting for it to be ready is immaterial. It may already
+            *   // have been ready every time we reached this part of the code.
+            *   //await panel.context.ready;                        // make sure it’s loaded
+            *   //const notebookModel = panel.context.model;
+            *   ////const notebookMeta = notebookModel.metadata;   // no cast needed here
+            *   //const metadata = notebookModel.metadata as unknown as IObservableJSON;
+            *   //const raw = metadata.get(MDX_META_KEY) as { bibInjected?: boolean } | undefined;
+            * 
+            *   // FAIL! Cannot invoke an object which is possibly 'null' or 'undefined'.
+            *   //await panel.context.ready  
+            *   //const nbModel = panel.content.model!;   
+            *   //const notebookMeta = nbModel.metadata;   // <-- THIS is an IObservableJSON?
+            *   //const raw = notebookMeta.get(MDX_META_KEY) as { bibInjected?: boolean } | undefined;
+            * 
+            *   // FAIL!  Cannot invoke an object which is possibly 'null' or 'undefined'.
+            *   //const nbModel = panel.model as INotebookModel;
+            *   //const meta    = nbModel.metadata;             // <-- IObservableJSON?
+            *   //const raw     = meta.get(MDX_META_KEY) as { bibInjected?: boolean } | undefined;
+            *   
+            *   // FAIL!
+            *   //const raw = (model.metadata as any)[MDX_META_KEY];
+            *   //const metadata: IMdxMeta = raw && typeof raw === 'object'
+            *   //  ? (raw as IMdxMeta)
+            *   //  : {};
+            * 
+            *   // FAIL!
+            *   //const metadata = model.metadata as any;  
+            *   //const raw = metadata.get(MDX_META_KEY) as IMdxMeta | undefined;
+            *   
+            *   //const bibInjected = raw?.bibInjected ?? false;
+            * 
+            *   // only inject a bibliography once
+            *   if (!bibInjected) {
+            *     // create a bib markdown cell if one doesn't already exist add one.
+            *     // HERE: find nearest .bib file recursively from current notebook directory
+            *     const notebookPath = panel.context.path;
+            *     const notebookDir = PathExt.dirname(notebookPath);
+            *     
+            *     // Try to locate the first .bib under that directory:
+            *     const bibSrc = await findBib(notebookDir);
+            *   
+            *     injectIfNoBibliography(tracker, panel, bibSrc);
+            *     
+            *     //metadata.bibInjected = true;
+            *     //(model.metadata as any)[MDX_META_KEY] = meta;
+            *     //panel.model!.metadata.set(MDX_META_KEY, { bibInjected: true });
+            *     metadata.set(MDX_META_KEY, { bibInjected: true });
+            *   
+            *     const widgets = panel.content.widgets;
+            *     const newCell = widgets[widgets.length - 1] as MarkdownCellWithXR;
+            *     bibChanged = await updateBibliography(newCell, notebookPath, xrState.bibInfo);
+            *   }
+            * }
+            */
 
-        const notebookPath = session?.path ?? '';
-        if (mdcell.bibMeta?.bibCell) {
-          bibChanged = await updateBibliography(mdcell, notebookPath, xrState.bibInfo);
+            // PARTIAL SUCCESS. Save state in xrState.bibInjected rather than in
+            // the NotebookPanel object's metadata.  If I had figured out how
+            // to use the NotebookPanel's metdata, it would have saved the fact that
+            // I had injected a bibliography with the ipynb file, and thus if the
+            // user had deleted the bibliography intentionally, it would honor
+            // the user's choice forever for that document.  Now I save bibInjected
+            // within xrState which only persists for a single session. Thus,
+            // it will only try to insert a bibliography once per document per session.
+
+            //console.log("a10 xrState.bibinjected:", xrState.bibInjected);
+            if (!xrState.bibInjected) {
+              const notebookPath = panel.context.path;
+              const notebookDir = PathExt.dirname(notebookPath);
+              
+              // Try to locate the first .bib under that directory:
+              const bibSrc = await findBib(notebookDir);
+              //console.log("a11 calling injectIfNoBibliography bibSrc:", bibSrc);
+            
+              injectIfNoBibliography(tracker, panel, bibSrc);
+              xrState.bibInjected = true;
+              const widgets = panel.content.widgets;
+              const newCell = widgets[widgets.length - 1] as MarkdownCellWithXR;
+              //console.log("a12 calling updateBibliography");
+              bibChanged = await updateBibliography(newCell, notebookPath, xrState.bibInfo);
+            }
+          }   
+
+          const notebookPath = session?.path ?? '';
+          if (mdcell.bibMeta?.bibCell) {
+            bibChanged = await updateBibliography(mdcell, notebookPath, xrState.bibInfo);
+          }
+        } catch (error) {
+          console.error("Error updating bibliography:", error);
+          await showErrorMessage("Error updating bibliography", 
+            String(error), 
+            );
         }
       }
       //console.log("a13 bibChanged ", bibChanged);
@@ -431,7 +436,17 @@ async function scanAll(tracker: INotebookTracker, notebookPanel: NotebookPanel) 
     xrState.bibInjected = true;
     const widgets = notebookPanel.content.widgets;
     const newCell = widgets[widgets.length - 1] as MarkdownCellWithXR;
-    await updateBibliography(newCell, notebookPath, xrState.bibInfo);
+    try {
+      await updateBibliography(newCell, notebookPath, xrState.bibInfo);
+    } catch (err) {
+      console.error('jupyterlab-mdx: failed to load initial bibliography', err);
+      void showErrorMessage(
+        'Bibliography Error',
+        `Failed to parse initial bibliography "${bibSrc ?? 'unknown'}".\n\n${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
   }
 
   //console.log("s4 ScanAll cites.length", cites.length);

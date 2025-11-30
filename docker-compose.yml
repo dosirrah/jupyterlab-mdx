@@ -9,6 +9,13 @@
 #
 #     docker compose up -d
 #
+# The -d immediately returns you to the command prompt.  It just runs the container in
+# detached state.   You can run this without -d. 
+#
+####### HEREDAVE.  The following comments are not correct.  I think to edit, I need to
+####### disable the second stage of hte buildin the Dockefile and then maybe the following comments
+####### make sense.
+#
 # To begin developemnt after cloning this repo to your local system,
 # do the following fro mthe root directory of the repo:
 #

@@ -4,18 +4,29 @@
 
 import {
   scanLabels,
-  preprocessLabels
+  preprocessLabels,
+  UndefinedReferenceError,
+  AmbiguousReferenceError
 } from '../xr';
 
 import { __testExports__ } from '../xr';
-const { toId, formatLabel, analyzeMarkdown, rewriteMathWithTags } = __testExports__;
+const { 
+  toId,
+  formatLabel,
+  analyzeMarkdown,
+  rewriteMathWithTags,
+  resolveLabelByPrefix,
+  slugFromHeading,
+  normalizeForPrefix
+ } = __testExports__;
+
 import { MarkdownCell } from '@jupyterlab/cells';
-import { NotebookPanel } from '@jupyterlab/notebook';
+//import { NotebookPanel } from '@jupyterlab/notebook';
 import { INotebookTracker } from '@jupyterlab/notebook';
-import { CellModel } from '@jupyterlab/cells';
-import { Notebook } from '@jupyterlab/notebook';
-import { NotebookModel } from '@jupyterlab/notebook';
-import { UUID } from '@lumino/coreutils';
+// import { CellModel } from '@jupyterlab/cells';
+// import { Notebook } from '@jupyterlab/notebook';
+// import { NotebookModel } from '@jupyterlab/notebook';
+// import { UUID } from '@lumino/coreutils';
 
 
 // A bare‐bones “cell” that looks enough like a MarkdownCell

@@ -2,16 +2,26 @@
 
 import { INotebookTracker } from '@jupyterlab/notebook';
 import {
-  Cell,
   MarkdownCell,
 } from '@jupyterlab/cells';
 import { setsEqualOrdered, union } from './util';
-import { preprocessCitations } from './bib';
+//import { preprocessCitations } from './bib';
+
+type HeadingInfo = {
+  line: number;       // line index within the cell
+  level: number;      // 2 for '##', 3 for '###', etc.
+  rawText: string;    // the heading text after the #'s
+  explicitLabel?: {   // if the user wrote @GKSelect or @eq:foo
+    enumName: string | null;
+    localName: string;
+  };
+};
 
 type CellXRMeta = {
   labelsDefined: Set<string>;       // e.g. ["eq:foo", "eq:bar", "goo"]
   labelsReferenced: Set<string>;    // same kinds of labels as labelsDefined.
   duplicateLabels: Set<string>;     // duplicates within a single cell.
+  headings: HeadingInfo[];        // headings with optional explicit labels.
 };
 
 type CellBibMeta = {
@@ -24,13 +34,31 @@ export interface MarkdownCellWithXR extends MarkdownCell {
   bibMeta?: CellBibMeta;
 }
 
+export class UndefinedReferenceError extends Error {
+  constructor(public ref: string) {
+    super(`Undefined reference: ${ref}`);
+    this.name = "UndefinedReferenceError";
+  }
+}
+
+export class AmbiguousReferenceError extends Error {
+  constructor(public ref: string, public candidates: string[]) {
+    super(`Ambiguous reference: ${ref}`);
+    this.name = "AmbiguousReferenceError";
+  }
+}
+
 
 // TAGGABLE is a reference to the \tag command in LaTex.  It is used to
 // number equations.  Currently only do this for the 'eq' but we may
 // add other predefined namespaces.
 const TAGGABLE_NAMES = new Set(['eq']);
+// Articles we strip from headings when generating slugs.
+const LEADING_ARTICLES = new Set(["a", "an", "the"]);
 
 console.log("Loaded xr.ts module");
+
+
 
 /**
  * Converts an optional enumeration name and ID to a fully qualified key.
@@ -40,6 +68,73 @@ console.log("Loaded xr.ts module");
  */
 function toId(name: string | null, id: string): string {
   return name ? `${name}:${id}` : id;
+}
+
+/**
+ * Build a slug from a heading line, using `_` between tokens.
+ *
+ * Examples:
+ *   "Time Complexity Analysis"        -> "Time_Complexity_Analysis"
+ *   "A Typical Manifestation"        -> "Typical_Manifestation"
+ *   "Atypical Manifestation"         -> "Atypical_Manifestation"
+ *
+ * NOTE: This must NOT be called on headings that already contain an explicit
+ *       @label; those should use that label instead.
+ * 
+ * @param text 
+ * @returns slug string or null if no valid slug can be created.
+ */
+function slugFromHeading(text: string): string | null {
+  // Treat explicit labels as "this function should not have been called".
+  // You may want a more precise regex depending on your @label syntax.
+  if (/@[A-Za-z0-9_:]+/.test(text)) {
+    throw new Error("slugFromHeading called on heading with explicit @label");
+  }
+
+  // Split on whitespace, strip punctuation per token
+  const tokens = text
+    .trim()
+    .split(/\s+/)
+    .map(tok => tok.replace(/[^A-Za-z0-9]/g, ""))
+    .filter(tok => tok.length > 0);
+
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  // Optionally drop a leading article that is its own word
+  const first = tokens[0].toLowerCase();
+  if (LEADING_ARTICLES.has(first)) {
+    tokens.shift();
+  }
+
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  // Join tokens with `_` so word boundaries are preserved
+  return tokens.join("_");
+}
+
+/**
+ * Normalize a string for prefix matching:
+ *  - replace spaces with `_`
+ *  - lowercase
+ *  - strip leading "a_", "an_", or "the_" (articles as separate tokens)
+ */
+function normalizeForPrefix(s: string): string {
+  let key = s.trim().replace(/\s+/g, "_").toLowerCase();
+
+  // Strip leading article only if it's a separate token: "a_", "an_", "the_"
+  if (key.startsWith("a_")) {
+    key = key.slice(2); // remove "a_"
+  } else if (key.startsWith("an_")) {
+    key = key.slice(3); // remove "an_"
+  } else if (key.startsWith("the_")) {
+    key = key.slice(4); // remove "the_"
+  }
+
+  return key;
 }
 
 function formatLabel(name: string | null, n: number | string, raw = false): string {
@@ -98,6 +193,59 @@ export function scanLabels(tracker: INotebookTracker): [Map<string, number>, Set
     //console.log("s5 scanLabels returning");
   }
   return [labelMap, duplicateLabels];
+}
+
+/**
+ * Resolve a user-supplied prefix against the prefix index.
+ *
+ * On success:
+ *   - returns a canonical labelId
+ *
+ * On failure:
+ *   - throws UndefinedReferenceError if there are no matches
+ *   - throws AmbiguousReferenceError if there is more than one distinct match
+ */
+function resolveLabelByPrefix(prefix: string, prefixIndex: PrefixEntry[]): string {
+  const p = normalizeForPrefix(prefix);
+
+  // Binary search for first entry with key >= p
+  let lo = 0;
+  let hi = prefixIndex.length;
+
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    const key = prefixIndex[mid].key;
+    if (key < p) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+
+  let candidate: string | null = null;
+
+  for (let i = lo; i < prefixIndex.length; i++) {
+    const key = prefixIndex[i].key;
+    if (!key.startsWith(p)) {
+      break;
+    }
+
+    const labelId = prefixIndex[i].labelId;
+
+    if (candidate === null) {
+      candidate = labelId;
+    } else if (candidate !== labelId) {
+      // second *different* matching label → ambiguous
+      throw new AmbiguousReferenceError(prefix, [candidate, labelId]);
+    }
+    // if candidate === labelId: multiple keys for same label (e.g. full id + local)
+  }
+
+  if (candidate === null) {
+    throw new UndefinedReferenceError(prefix);
+  }
+
+  return candidate;
 }
 
 /**
@@ -409,5 +557,8 @@ export const __testExports__ = {
   toId,
   formatLabel,
   analyzeMarkdown,
-  rewriteMathWithTags
+  rewriteMathWithTags,
+  resolveLabelByPrefix,
+  slugFromHeading,
+  normalizeForPrefix
 };

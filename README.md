@@ -1,6 +1,5 @@
 # jupyterlab_mdx
 
-[![Github Actions Status](https://github.com/dosirrah/jupyterlab-mdx/workflows/Build/badge.svg)](https://github.com/dosirrah/jupyterlab-mdx/actions/workflows/build.yml)[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/dosirrah/jupyterlab-mdx/main?urlpath=lab)
 Markdown extensions with support for cross-references
 
 ## Requirements
@@ -28,8 +27,8 @@ pip uninstall jupyterlab_mdx
 ### Development install
 
     % yarn install
-    % docker-compose build jupyter
-    % docker-compose up -d jupyter
+    % docker compose build 
+    % docker-compose up 
 
 HERE
 
@@ -125,3 +124,22 @@ woudl appear as
 ### Packaging the extension
 
 See [RELEASE](RELEASE.md)
+
+
+# Setting up to use playwright
+
+Change into the root of the jupyterlab-mdx repository.
+
+```
+  brew install node
+  npm install -D @playwright/test
+  npx playwright install chromium
+```
+
+
+To run tests
+
+```
+npx playwright test
+```
+

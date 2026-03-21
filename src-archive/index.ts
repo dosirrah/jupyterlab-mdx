@@ -4,9 +4,8 @@ const plugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyterlab-mdx',
   autoStart: true,
   activate: (app: JupyterFrontEnd) => {
-    console.log('MDX LOAD OK 2026-03-21');
+    console.log('MDX LOAD OK');
   }
 };
 
 export default plugin;
-

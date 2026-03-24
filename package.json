@@ -18,7 +18,13 @@
     "build": "npm run build:lib && npm run build:labextension",
     "watch": "tsc -w --sourceMap & jupyter labextension watch .",
     "lint": "eslint src/**/*.ts",
-    "test": "jest --coverage"
+    "test": "jest --coverage",
+    "test:unit": "jest --coverage src/__tests__/syntax.spec.ts src/__tests__/sections.spec.ts src/__tests__/transform.spec.ts",
+    "test:unit:watch": "jest --watch src/__tests__/syntax.spec.ts src/__tests__/sections.spec.ts src/__tests__/transform.spec.ts",
+    "lab:start": "docker compose up -d",
+    "lab:stop": "docker compose down",
+    "test:ui": "npx playwright test",
+    "test:smoke": "npx playwright test playwright-tests/smoke.spec.ts playwright-tests/mdx_smoke.spec.ts"
   },
   "files": [
     "lib/**/*"

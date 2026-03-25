@@ -1,0 +1,35 @@
+# docker-compose.dev.yml — fast-iteration development environment
+#
+# Prerequisites:
+#   export R=$HOME/olemiss/repo   # directory that contains jupyterlab-mdx/
+#
+# Build the dev image (once, or after changing Dockerfile.dev):
+#   npm run lab:build:dev
+#
+# Start / stop:
+#   npm run lab:start:dev
+#   npm run lab:stop:dev
+#
+# After that, the iteration loop is just:
+#   npm run build    (on the host)
+#   reload browser   (no container restart needed)
+
+services:
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: jupyterlab-mdx-dev:latest
+    ports:
+      - "8888:8888"
+    user: jovyan
+    volumes:
+      - ${R}:/home/jovyan/repo
+    # scripts/dev-entrypoint.sh installs the extension in editable mode,
+    # symlinks the labextension to the local build output, then starts
+    # JupyterLab.  See that script for details.
+    command: bash /home/jovyan/repo/jupyterlab-mdx/scripts/dev-entrypoint.sh
+    environment:
+      JUPYTER_ENABLE_LAB: "yes"
+      NB_UID: ${UID:-1000}
+      NB_GID: ${GID:-1000}

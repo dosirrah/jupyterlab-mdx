@@ -1,0 +1,56 @@
+# Dockerfile.dev — development image for jupyterlab-mdx
+#
+# Build once:
+#   npm run lab:build:dev
+#
+# Start / stop:
+#   npm run lab:start:dev
+#   npm run lab:stop:dev
+#
+# Development iteration (no container restart needed):
+#   npm run build          # recompile TS and bundle on the host
+#   # reload the browser   # JupyterLab serves the updated files via symlink
+#
+# How it works:
+#   docker-compose.dev.yml mounts ${R} (your local repo root) as
+#   /home/jovyan/repo inside the container.  On startup the container
+#   runs `pip install -e` and `jupyter labextension develop --overwrite`,
+#   which creates a symlink from the installed labextension directory to
+#   the local build output (jupyterlab_mdx/labextension/).  Because of
+#   that symlink, every `npm run build` on the host is immediately
+#   visible to JupyterLab without restarting the container.
+
+FROM python:3.11-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+         ca-certificates git curl vim-tiny \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --shell /bin/bash jovyan
+USER jovyan
+WORKDIR /home/jovyan
+
+ENV VENV_DIR=/home/jovyan/.venv
+ENV PATH="$VENV_DIR/bin:${PATH}"
+
+# Install JupyterLab and the build tooling needed by `pip install -e`.
+RUN python -m venv $VENV_DIR \
+    && pip install --upgrade pip setuptools wheel hatchling \
+    && pip install jupyterlab
+
+# Data-science packages (same set as the production image).
+RUN pip install \
+    numpy \
+    pandas \
+    scipy \
+    statsmodels \
+    matplotlib \
+    seaborn \
+    plotly \
+    scikit-learn \
+    tqdm \
+    ipywidgets
+
+# The extension itself is installed at container startup from the
+# mounted source tree; see docker-compose.dev.yml.

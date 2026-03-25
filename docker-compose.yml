@@ -65,6 +65,10 @@ services:
     user: jovyan
     volumes:
       - ${R}:/home/jovyan/repo
+    command: >
+      jupyter lab --ip=0.0.0.0 --no-browser
+      --ServerApp.token=''
+      --NotebookApp.notebook_dir=/home/jovyan/repo
     environment:
       JUPYTER_ENABLE_LAB: "yes"
       NB_UID: ${UID}

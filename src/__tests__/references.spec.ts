@@ -200,7 +200,7 @@ describe('mdx references / scanNotebook', () => {
 ### One
 ### Two
 ## Beta
-### One
+### Foo
 `
     ]);
 

@@ -21,8 +21,12 @@
     "test": "jest --coverage",
     "test:unit": "jest --coverage src/__tests__/syntax.spec.ts src/__tests__/sections.spec.ts src/__tests__/transform.spec.ts",
     "test:unit:watch": "jest --watch src/__tests__/syntax.spec.ts src/__tests__/sections.spec.ts src/__tests__/transform.spec.ts",
+    "lab:build": "docker compose build",
     "lab:start": "docker compose up -d",
     "lab:stop": "docker compose down",
+    "lab:build:dev": "docker compose -f docker-compose.dev.yml build",
+    "lab:start:dev": "docker compose -f docker-compose.dev.yml up -d",
+    "lab:stop:dev": "docker compose -f docker-compose.dev.yml down",
     "test:ui": "npx playwright test",
     "test:smoke": "npx playwright test playwright-tests/smoke.spec.ts playwright-tests/mdx_smoke.spec.ts"
   },

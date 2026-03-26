@@ -1,34 +1,9 @@
 import json
 from pathlib import Path
-import zipfile
+from markdown_test_tools import notebook, md_cell
 
 base = Path(".")
 base.mkdir(parents=True, exist_ok=True)
-
-def md_cell(source: str):
-    return {
-        "cell_type": "markdown",
-        "metadata": {},
-        "source": source.splitlines(keepends=True),
-    }
-
-def notebook(cells):
-    return {
-        "cells": cells,
-        "metadata": {
-            "kernelspec": {
-                "display_name": "Python 3",
-                "language": "python",
-                "name": "python3"
-            },
-            "language_info": {
-                "name": "python",
-                "version": "3.11"
-            }
-        },
-        "nbformat": 4,
-        "nbformat_minor": 5
-    }
 
 fixtures = {
     "single_cell_single_section.ipynb": [
@@ -103,11 +78,6 @@ for filename, cells in fixtures.items():
     with open(path, "w", encoding="utf-8") as f:
         json.dump(notebook(cells), f, ensure_ascii=False, indent=2)
 
-#zip_path = Path("/mnt/data/implicit_label_fixtures.zip")
-#with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-#    for path in sorted(base.glob("*.ipynb")):
-#        zf.write(path, arcname=path.name)
 
 print(f"Created {len(fixtures)} notebooks in {base}")
-#print(f"ZIP: {zip_path}")
 

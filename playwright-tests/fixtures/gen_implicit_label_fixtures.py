@@ -26,7 +26,7 @@ fixtures = {
     ],
     "multi_cell_implicit_reference.ipynb": [
         md_cell("## Introduction\n"),
-        md_cell("See ##introduction.\n")
+        md_cell("See #introduction.\n")
     ],
     "multi_cell_top_level_sections.ipynb": [
         md_cell("## First\n"),

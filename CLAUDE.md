@@ -218,6 +218,169 @@ A reference `#r` is resolved in priority order. Resolution determines both
 what object is being referenced and which numbering system supplies the
 rendered number.
 
+## Named enumerations
+
+In addition to the global enumeration, jupyterlab-mdx supports **named enumerations**, which behave like independent numbering namespaces.
+
+### Syntax
+
+A label may appear in one of two forms:
+
+- `@foo`  
+  Declares label `foo` in the **global enumeration**
+
+- `@name:foo`  
+  Declares label `foo` in the **named enumeration** `name`
+
+Examples:
+
+    Step @foo: preprocess data.
+
+    Figure @fig:architecture shows the system.
+
+    Equation @eq:maxwell defines the relationship.
+
+### Semantics
+
+Each enumeration maintains its own independent numbering sequence:
+
+- The **global enumeration** is one sequence
+- Each **named enumeration** (`fig`, `eq`, etc.) is its own sequence
+
+Therefore:
+
+- `@foo` → global numbering
+- `@fig:one` → numbering within `fig`
+- `@eq:one` → numbering within `eq`
+
+Example:
+
+    @fig:first
+    @eq:energy
+    @fig:second
+
+Numbering:
+
+- `@fig:first` → 1  
+- `@eq:energy` → 1  
+- `@fig:second` → 2  
+
+### Canonical identity
+
+The canonical identity of a label is:
+
+- `foo` for global labels
+- `name:foo` for named labels
+
+The enumeration name is part of the identity.
+
+Therefore:
+
+- `@foo` ≠ `@fig:foo`
+- `@fig:one` ≠ `@eq:one`
+
+### Duplicate rules
+
+Duplicates are determined by canonical identity:
+
+- `@foo` and `@foo` → duplicate
+- `@fig:one` and `@fig:one` → duplicate
+- `@fig:one` and `@eq:one` → not duplicate
+- `@foo` and `@bar:foo` → not duplicate
+
+### Reference resolution
+
+References must resolve within the same enumeration.
+
+- A reference to a global label resolves only to the global enumeration
+- A reference to a named label resolves only within that named enumeration
+- Resolution must **not fall back across enumerations**
+
+Examples:
+
+- `fig:one` must not resolve to `eq:one`
+- `foo` must not resolve to `bar:foo`
+
+When a reference resolves to a named-enumeration label, the rendered number comes from that enumeration.
+
+### Interaction with sections
+
+- Section numbering remains separate from enumerations
+- If a section has an explicit label (global or named), that label is authoritative
+- If a label is defined using a named enumeration, the rendered reference uses that enumeration’s numbering rather than section numbering
+
+### Backward compatibility
+
+Existing global-label behavior must remain unchanged:
+
+- `@foo` continues to behave exactly as before
+- Adding named enumerations must not alter:
+  - existing numbering
+  - existing reference resolution
+  - existing tests or fixtures
+
+Named enumerations are strictly additive.
+
+### Reserved namespace: `eq`
+
+The namespace `eq` is reserved for displayed LaTeX equation blocks.
+
+Labels of the form `@eq:name` are valid only inside display math.
+
+Supported display-math delimiters are:
+
+- `$$ ... $$`
+- `$begin:math:display$ \.\.\. $end:math:display$`
+
+Examples:
+
+    $$
+    \int_{x=0}^t x^2 dx   @eq:foo
+    $$
+
+and
+
+    \[
+    \int_{x=0}^t x^2 dx   @eq:foo
+    \]
+
+A label `@eq:name` must not appear in ordinary text, headings, list items, or inline math.
+
+When rendered, the label is replaced by an explicit LaTeX tag with parentheses:
+
+    \tag{(n)}
+
+where `n` is the equation number in the notebook-global `eq` enumeration.
+
+For the first equation example above and assuming it is the first equation
+in a notebook, the rendered result is:
+
+    $$
+    \int_{x=0}^t x^2 dx     \tag{(1)}
+    $$
+
+### Equation tag formatting
+
+- The system must always emit equation tags with parentheses.
+- Use `\tag{(n)}` where `n` is the equation number.
+- Do not emit `\tag{n}`.
+
+This ensures consistency with standard LaTeX equation numbering, which is conventionally displayed as `(1)`, `(2)`, etc.
+
+### Semantics of the `eq` enumeration
+
+- The `eq` enumeration is distinct from the global enumeration and from other named enumerations.
+- Equation numbering is notebook-global.
+- Equation numbering is assigned in notebook order.
+- References to equation labels may appear anywhere markdown references are allowed.
+- An equation reference resolves to the numbering of the `eq` enumeration.
+
+Examples:
+
+    See #eq:foo.
+
+is allowed outside the equation block and should render using the equation number assigned to `@eq:foo`.        
+
 ### Priority order
 
 1. **Exact match against an explicit label**
@@ -338,3 +501,30 @@ There are two test layers:
    - These are integration tests.
    - They verify that the extension is loaded and wired into JupyterLab.
    - They should not be the main oracle for syntax semantics.
+
+
+## Test execution order
+
+When implementing or modifying features, do not start with Playwright tests.
+
+Follow this order:
+1. Run unit tests and other non-Playwright tests first.
+2. Make the non-Playwright test suite pass before touching Playwright tests.
+3. Only run Playwright tests after the underlying parsing, transformation, and model logic is stable.
+
+Reason:
+- Playwright tests are slower and should be used only after core logic is validated.
+- Prefer isolating failures in pure logic tests before checking UI behavior.
+
+
+## Protected test files
+
+Tests were passing for these files.   Do not change these tests:
+
+  * playwright-tests/mdx_explicit_label.spec.ts
+  * playwright-tests/mdx_implicit_label.spec.ts
+  * playwright-tests/mdx_smoke.spec.ts
+  * playwright-tests/smoke.spec.ts
+
+Other test files are newer and may contain inconsistencies.  Please point out
+discovered consistencies.

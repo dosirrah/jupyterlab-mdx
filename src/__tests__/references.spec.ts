@@ -3,6 +3,7 @@ import {
   resolveReference,
   transformMarkdown,
   DuplicateLabelError,
+  ReservedEnumerationMisuseError,
   SectionInfo,
   EnumerationInfo
 } from '../references';
@@ -17,8 +18,11 @@ function sectionEntries(state: ReturnType<typeof scanNotebook>) {
   });
 }
 
-function enumerationEntries(state: ReturnType<typeof scanNotebook>) {
-  return state.enumeration.map(label => {
+function enumerationEntries(
+  state: ReturnType<typeof scanNotebook>,
+  name = 'global'
+) {
+  return (state.enumerations.get(name) ?? []).map(label => {
     const info = state.labels.get(label);
     if (!info || info.kind !== 'enumeration') {
       throw new Error(`Expected enumeration for label ${label}`);
@@ -42,19 +46,39 @@ describe('mdx references / scanNotebook', () => {
     expect(state.sections).toEqual([]);
   });
 
-  it('numbers a single label', () => {
+  it('numbers a single global-enumeration label', () => {
     const state = scanNotebook([
       'Step @foo'
     ]);
 
-    expect(state.enumeration).toEqual(['foo']);
+    expect(state.enumerations.get('global')).toEqual(['foo']);
     expect(state.labels.get('foo')).toEqual({
       kind: 'enumeration',
+      name: 'global',
       number: '1'
     });
     expect(enumerationEntries(state)).toEqual([
-      { label: 'foo', kind: 'enumeration', number: '1' }
+      { label: 'foo', kind: 'enumeration', name: 'global', number: '1' }
     ]);
+  });
+
+  it('records global enumeration entries with name "global"', () => {
+    const state = scanNotebook([
+      'Step @foo',
+      'Step @bar'
+    ]);
+
+    expect(state.labels.get('foo')).toEqual({
+      kind: 'enumeration',
+      name: 'global',
+      number: '1'
+    });
+
+    expect(state.labels.get('bar')).toEqual({
+      kind: 'enumeration',
+      name: 'global',
+      number: '2'
+    });
   });
 
   it('numbers multiple global-enumeration labels in first appearance order', () => {
@@ -65,10 +89,136 @@ describe('mdx references / scanNotebook', () => {
     ]);
 
     expect(enumerationEntries(state)).toEqual([
-      { label: 'foo', kind: 'enumeration', number: '1' },
-      { label: 'bar', kind: 'enumeration', number: '2' },
-      { label: 'baz', kind: 'enumeration', number: '3' }
+      { label: 'foo', kind: 'enumeration', name: 'global', number: '1' },
+      { label: 'bar', kind: 'enumeration', name: 'global', number: '2' },
+      { label: 'baz', kind: 'enumeration', name: 'global', number: '3' }
     ]);
+  });
+
+  it('tracks named enumerations separately from the global enumeration', () => {
+    const state = scanNotebook([
+      'Step @foo',
+      'Figure @fig:arch shows the system.',
+      'Another step @bar'
+    ]);
+
+    expect(state.enumerations.get('global')).toEqual(['foo', 'bar']);
+    expect(state.enumerations.get('fig')).toEqual(['fig:arch']);
+
+    expect(state.labels.get('foo')).toEqual({
+      kind: 'enumeration',
+      name: 'global',
+      number: '1'
+    });
+    expect(state.labels.get('bar')).toEqual({
+      kind: 'enumeration',
+      name: 'global',
+      number: '2'
+    });
+    expect(state.labels.get('fig:arch')).toEqual({
+      kind: 'enumeration',
+      name: 'fig',
+      number: '1'
+    });
+  });
+
+  it('allows the same member name in different named enumerations', () => {
+    const state = scanNotebook([
+      'Figure @fig:one shows the architecture.',
+      '$$',
+      'E = mc^2   @eq:one',
+      '$$'
+    ]);
+
+    expect(state.labels.has('fig:one')).toBe(true);
+    expect(state.labels.has('eq:one')).toBe(true);
+
+    expect(state.labels.get('fig:one')).toEqual({
+      kind: 'enumeration',
+      name: 'fig',
+      number: '1'
+    });
+    expect(state.labels.get('eq:one')).toEqual({
+      kind: 'enumeration',
+      name: 'eq',
+      number: '1'
+    });
+  });
+
+  it('allows the same member name in the global and a named enumeration', () => {
+    const state = scanNotebook([
+      'Step @one',
+      'Figure @fig:one shows the pipeline.'
+    ]);
+
+    expect(state.labels.has('one')).toBe(true);
+    expect(state.labels.has('fig:one')).toBe(true);
+
+    expect(state.labels.get('one')).toEqual({
+      kind: 'enumeration',
+      name: 'global',
+      number: '1'
+    });
+    expect(state.labels.get('fig:one')).toEqual({
+      kind: 'enumeration',
+      name: 'fig',
+      number: '1'
+    });
+  });
+
+  it('rejects duplicate labels within the same named enumeration', () => {
+    expect(() =>
+      scanNotebook([
+        'Figure @fig:one shows the architecture.',
+        'Figure @fig:one shows another architecture.'
+      ])
+    ).toThrow(DuplicateLabelError);
+  });
+
+  it('rejects eq labels outside display math blocks', () => {
+    expect(() =>
+      scanNotebook([
+        'This is not allowed: @eq:bad outside math.'
+      ])
+    ).toThrow(ReservedEnumerationMisuseError);
+  });
+
+  it('rejects eq labels in headings', () => {
+    expect(() =>
+      scanNotebook([
+        '## @eq:bad Methods'
+      ])
+    ).toThrow(ReservedEnumerationMisuseError);
+  });
+
+  it('accepts eq labels inside $$ blocks', () => {
+    const state = scanNotebook([
+      '$$',
+      '\\int_{x=0}^t x^2 dx     @eq:foo',
+      '$$'
+    ]);
+
+    expect(state.enumerations.get('eq')).toEqual(['eq:foo']);
+    expect(state.labels.get('eq:foo')).toEqual({
+      kind: 'enumeration',
+      name: 'eq',
+      number: '1'
+    });
+  });
+
+  it('accepts eq labels inside \\[ \\] blocks', () => {
+    const state = scanNotebook([
+      '\\[',
+      '\\int_{x=0}^t x^2 dx     @eq:foo',
+      '\\]'
+    ]);
+
+    expect(state.enumerations.get('eq')).toEqual(['eq:foo']);
+    expect(state.labels.get('eq:foo')).toEqual({
+      kind: 'enumeration',
+      name: 'eq',
+      number: '1'
+    });
   });
 
   it('numbers a single section as 1', () => {
@@ -662,6 +812,18 @@ describe('mdx references / DuplicateLabelError', () => {
       ])
     ).not.toThrow();
   });
+
+  it('does not throw when labels are distinct because they are in different enumerations', () => {
+    expect(() =>
+      scanNotebook([
+        'Step @foo',
+        'Figure @fig:foo',
+        '$$',
+        'x = y + z   @eq:foo',
+        '$$'
+      ])
+    ).not.toThrow();
+  });
 });
 
 describe('mdx references / resolveReference', () => {
@@ -701,6 +863,27 @@ describe('mdx references / resolveReference', () => {
     ]);
 
     expect(resolveReference('foo', state)).toBeNull();
+  });
+
+  it('resolves a named-enumeration label by exact match', () => {
+    const state = scanNotebook([
+      'Figure @fig:arch shows the system.'
+    ]);
+
+    expect(resolveReference('fig:arch', state)).toBe('fig:arch');
+  });
+
+  it('does not fall back across enumerations when resolving references', () => {
+    const state = scanNotebook([
+      'Figure @fig:one',
+      '$$',
+      'E = mc^2   @eq:one',
+      '$$'
+    ]);
+
+    expect(resolveReference('fig:one', state)).toBe('fig:one');
+    expect(resolveReference('eq:one', state)).toBe('eq:one');
+    expect(resolveReference('one', state)).toBeNull();
   });
 
   it('resolves an explicit section label by exact match', () => {
@@ -861,6 +1044,16 @@ describe('mdx references / transformMarkdown', () => {
     expect(transformMarkdown('Step @foo. Add green eggs.', state)).toBe('Step 1. Add green eggs.');
   });
 
+  it('numbers a named-enumeration label using its own enumeration', () => {
+    const state = scanNotebook([
+      'Figure @fig:arch shows the system.',
+      'Figure @fig:pipeline shows the pipeline.'
+    ]);
+
+    expect(transformMarkdown('Figure @fig:arch shows the system.', state)).toBe('Figure 1 shows the system.');
+    expect(transformMarkdown('Figure @fig:pipeline shows the pipeline.', state)).toBe('Figure 2 shows the pipeline.');
+  });
+
   it('numbers multiple global-enumeration labels in one cell', () => {
     const md = `
 Step @foo. Add green eggs.
@@ -927,6 +1120,14 @@ Step 2. Add ham.
     ]);
 
     expect(transformMarkdown('See #foo.', state)).toBe('See 1.');
+  });
+
+  it('resolves a named-enumeration reference by exact label', () => {
+    const state = scanNotebook([
+      'Figure @fig:arch shows the system.'
+    ]);
+
+    expect(transformMarkdown('See #fig:arch.', state)).toBe('See 1.');
   });
 
   it('does not use implicit title matching for explicitly labelled sections', () => {
@@ -1072,5 +1273,32 @@ See 1.
     ]);
 
     expect(transformMarkdown('#### Deep Section', state)).toBe('#### 1. Deep Section');
+  });
+
+  it('renders equation labels as parenthesized equation tags', () => {
+    const md = `
+$$
+\\int_{x=0}^t x^2 dx     @eq:foo
+$$
+`;
+    const state = scanNotebook([md]);
+
+    expect(transformMarkdown(md, state)).toBe(`
+$$
+\\int_{x=0}^t x^2 dx     \\tag{(1)}
+$$
+`);
+  });
+
+  it('resolves equation references anywhere markdown references are allowed', () => {
+    const state = scanNotebook([
+      `
+$$
+\\int_{x=0}^t x^2 dx     @eq:foo
+$$
+`
+    ]);
+
+    expect(transformMarkdown('See #eq:foo.', state)).toBe('See 1.');
   });
 });

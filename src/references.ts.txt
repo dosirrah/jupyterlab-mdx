@@ -8,12 +8,9 @@ export interface SectionInfo {
   isExplicit: boolean;
 }
 
-// @foo is a in the global enumeration.  @boo:foo is label `foo`
-// in the enumeration `boo`.
 export interface EnumerationInfo {
   kind: 'enumeration';
-  name: string;       // 'global', 'fig', 'eq', ...
-  number: string;     // derived enumeration number within that enumeration
+  number: string;     // derived global-enumeration number, e.g. "3"
 }
 
 export type LabelInfo = SectionInfo | EnumerationInfo;
@@ -21,8 +18,7 @@ export type LabelInfo = SectionInfo | EnumerationInfo;
 export interface NotebookState {
   labels: Map<string, LabelInfo>;
   sections: string[];      // ordered canonical labels of sections
-  //enumeration: string[];   // ordered canonical labels in the global enumeration (deprecated because the global enumeration appears as one enumeration in enumeratoins.
-  enumerations: Map<string, string[]> // ordered canonical label for a named enumeration
+  enumeration: string[];   // ordered canonical labels in the global enumeration
   duplicates: Set<string>; // canonical labels that appeared more than once
   // Maps canonical label → markdown-cell indices that are secondary occurrences.
   // The primary (first) occurrence is NOT listed here.  Used by transformMarkdown
@@ -41,33 +37,13 @@ export class DuplicateLabelError extends Error {
   }
 }
 
-export class ReservedEnumerationMisuseError extends Error {
-  enumerationName: string;
-  label: string;
-
-  constructor(enumerationName: string, label: string, message?: string) {
-    super(message ?? `Reserved enumeration ${enumerationName} misused: ${label}`);
-    this.name = 'ReservedEnumerationMisuseError';
-    this.enumerationName = enumerationName;
-    this.label = label;
-  }
-}
-
 interface StackEntry { level: number; counter: number; }
-
-function makeCanonicalLabel(name: string, member: string): string {
-  const n = normalize(name);
-  const m = normalize(member);
-  return n === 'global' ? m : `${n}:${m}`;
-}
 
 /**
  * First pass over the notebook.
  *
  * `cells` contains only markdown cells, in notebook order.
  * Throws `DuplicateLabelError` if two labels normalize to the same canonical label.
- * Throws `ReservedEnumerationMisuseError` if a label belonging to the eq enumeration
- * is created outside of a LaTeX equation block.
  */
 export function scanNotebook(cells: string[]): NotebookState {
   const labels = new Map<string, LabelInfo>();

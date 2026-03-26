@@ -266,3 +266,38 @@ test.describe('mdx implicit label with multiple cells', () => {
     await expect(renderedCells.nth(2)).toContainText('See 1 and 2.');
   });
 });
+
+
+test.describe('mdx implicit labels across more complicated markdown', () => {
+  test('complicated notebook renders correct section numbers', async ({ page }) => {
+   
+    await page.goto('/lab/tree/playwright-tests/fixtures/complicated.ipynb?reset');
+
+    const renderedCells = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon');
+
+    await expect(renderedCells.nth(0)).toBeVisible();
+    await expect(renderedCells.nth(0)).toContainText('Spark Exact Quantile Analysis');
+
+    await expect(renderedCells.nth(1)).toBeVisible();
+    await expect(renderedCells.nth(1)).toContainText('1. Note on cross-references');
+
+    await expect(renderedCells.nth(2)).toContainText('2. Computation Models');
+    await expect(renderedCells.nth(2)).toContainText('2.1 Parallel Random-Access Machine (PRAM)');
+    await expect(renderedCells.nth(2)).toContainText('2.2 Bulk-Synchronous Parallel (BSP)');
+    await expect(renderedCells.nth(2)).toContainText('2.3 Coarse-Grained Multiprocessor (CGM)');
+    await expect(renderedCells.nth(2)).toContainText('2.4 Spark Model');
+    
+    await expect(renderedCells.nth(3)).toContainText('Assumption:');
+
+    await expect(renderedCells.nth(4)).toContainText('3. Performance Evaluation Procedure');
+
+    await expect(renderedCells.nth(4)).toContainText('4. Sequential External-Memory Sample Sort');
+
+    await expect(renderedCells.nth(5)).toContainText('5. Parallel Sorting by Regular Sampling (PSRS)');
+
+    await expect(renderedCells.nth(6)).toContainText('5.1 PSRS BSP-style Time complexity');
+
+    await expect(renderedCells.nth(7)).toContainText('6. Spark Sort');
+
+  });
+});

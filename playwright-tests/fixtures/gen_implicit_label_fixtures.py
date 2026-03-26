@@ -10,7 +10,7 @@ fixtures = {
         md_cell("## My Heading\n")
     ],
     "single_cell_section_and_subsection.ipynb": [
-        md_cell("## First Section\n\n## Subsection\n")
+        md_cell("## First Section\n\n### Subsection\n")
     ],
     "single_cell_implicit_reference_same_cell.ipynb": [
         md_cell("## Introduction\n\nSee #introduction.\n")

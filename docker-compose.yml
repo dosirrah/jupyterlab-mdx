@@ -68,6 +68,8 @@ services:
     command: >
       jupyter lab --ip=0.0.0.0 --no-browser
       --ServerApp.token=''
+      --IdentityProvider.token=''
+      --IdentityProvider.password_required=False
       --NotebookApp.notebook_dir=/home/jovyan/repo
     environment:
       JUPYTER_ENABLE_LAB: "yes"

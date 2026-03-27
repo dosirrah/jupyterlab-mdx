@@ -309,17 +309,23 @@ When a reference resolves to a named-enumeration label, the rendered number come
 - If a section has an explicit label (global or named), that label is authoritative
 - If a label is defined using a named enumeration, the rendered reference uses that enumeration’s numbering rather than section numbering
 
-### Backward compatibility
+### Explicit labels in headings
 
-Existing global-label behavior must remain unchanged:
+A section heading may have an explicit label only in the global label space:
 
-- `@foo` continues to behave exactly as before
-- Adding named enumerations must not alter:
-  - existing numbering
-  - existing reference resolution
-  - existing tests or fixtures
+- `## @label Title`
 
-Named enumerations are strictly additive.
+Named-enumeration labels are not allowed in section headings:
+
+- invalid: `## @fig:overview Overview`
+- invalid: `## @eq:energy Methods`
+
+Reason:
+- section headings are always numbered by section hierarchy
+- named enumerations such as `fig` and `eq` have their own numbering systems
+- allowing named-enumeration syntax in headings would suggest conflicting numbering semantics
+
+If a named-enumeration label appears in a heading, scanning should throw an exception.
 
 ### Reserved namespace: `eq`
 
@@ -346,26 +352,26 @@ and
 
 A label `@eq:name` must not appear in ordinary text, headings, list items, or inline math.
 
-When rendered, the label is replaced by an explicit LaTeX tag with parentheses:
+When rendered, the label is replaced by an explicit LaTeX tag:
 
-    \tag{(n)}
+    \tag{n}
 
 where `n` is the equation number in the notebook-global `eq` enumeration.
+KaTeX automatically wraps the tag content in parentheses, so `\tag{1}` renders as `(1)`.
 
 For the first equation example above and assuming it is the first equation
 in a notebook, the rendered result is:
 
     $$
-    \int_{x=0}^t x^2 dx     \tag{(1)}
+    \int_{x=0}^t x^2 dx     \tag{1}
     $$
 
 ### Equation tag formatting
 
-- The system must always emit equation tags with parentheses.
-- Use `\tag{(n)}` where `n` is the equation number.
-- Do not emit `\tag{n}`.
+- Emit `\tag{n}` where `n` is the equation number (no parentheses in the argument).
+- Do not emit `\tag{(n)}` — KaTeX adds parentheses automatically, so that would produce `((n))`.
 
-This ensures consistency with standard LaTeX equation numbering, which is conventionally displayed as `(1)`, `(2)`, etc.
+This ensures the rendered output displays as `(1)`, `(2)`, etc.
 
 ### Semantics of the `eq` enumeration
 
@@ -486,6 +492,198 @@ Example:
 ### @gkanalysis Analysis
 ### @monsteranalysis Analysis
 ```
+
+
+## Citation Design and Consistency Model
+
+Citations are designed to be **non-reactive**, favoring simplicity and robustness over immediate
+global consistency.   I tried a reactive design and it proved to be complex, fragile, and racy.
+
+### Key Principles
+
+- Citation numbering is **not updated incrementally**
+- Citation state is treated as a **derived artifact** of the notebook
+- A **full notebook scan** is used to rebuild citation state when needed
+- The system avoids reference counting, mutation tracking, and reactive updates.
+- A rebuild occurs when a cell containing the bibliography is re-executed (see
+  Bibliography Blocks, i.e., section @bib) .
+
+### Citation Syntax
+
+Citations use the caret (`^`) syntax:
+
+    ^lamport1994
+
+This refers to a BibTeX entry with key `lamport1994`.
+
+### Bibliography Blocks
+
+A bibliography is defined using a fenced directive:
+
+    ::: bibliography
+    src: path/to/file.bib
+    :::
+
+- `src` may be:
+  - a local file (e.g., `refs.bib`)
+  - a relative path (e.g., `papers/refs.bib`)
+  - a remote URL
+
+- When a bibliograph block is executed, the entire document
+  is scanned  (see Synchornization Point, i.e., Section @syn).
+  
+- A bibliography block can be found anywhere in the notebook.
+  When a document is opened, every cell must be scanned
+  for citations and a list of citations is built spanning
+  all cells.  The ordering follows the order of first appearance.
+  Global state should be implemented with a Map<string, number>, 
+  which maps from the citation label to a number denoting
+  the order of insertion into the map starting from 1
+  for the first citation encountered in the sweep of the
+  entire notebook.
+
+- If citations are found, but no bibliography block is found
+  after a sweep of the entire document then a cell is appeneded
+  to the end of the document containing a bibliography
+  block is created with instructions on how to reference
+  a .bib file. 
+
+
+### Rendering Behavior
+
+- Citations are replaced at render time (non-destructively)
+- The original Markdown source is not modified
+- Each citation resolves to a formatted reference derived from the BibTeX entry
+
+    @article{lamport1994,
+      author  = {Leslie Lamport},
+      title   = {LaTeX: A Document Preparation System},
+      journal = {Software: Practice and Experience},
+      year    = {1994}
+    }
+
+  which results in this example output:
+
+    [1] Leslie Lamport, “LaTeX: A Document Preparation System,” Software: Practice and Experience, 1994.
+
+### Bibliography Formatting (IEEE-Style)
+
+Bibliography entries are rendered using a simplified IEEE-style
+format. The goal is to produce output that is clear, consistent, and
+recognizable, without implementing the full IEEE specification.
+
+Each entry is formatted as:
+
+    [n] Author(s), “Title,” Venue, Year.
+
+Where:
+
+- `[n]` is the citation number
+- `Author(s)` are taken from the `author` field (joined by commas)
+- `Title` is taken from the `title` field and enclosed in quotation marks
+- `Venue` is taken from `journal` or `booktitle`
+- `Year` is taken from the `year` field
+
+Example:
+
+- Given the following entry in the associated .bib file
+
+    @article{lamport1994,
+      author  = {Leslie Lamport},
+      title   = {LaTeX: A Document Preparation System},
+      journal = {Software: Practice and Experience},
+      year    = {1994}
+    }
+
+  and the first markdown cell containing
+
+    ^lamport1994
+    
+  we would see this output in the rendered output of the cell containing the bibliography directive:
+
+    [1] Leslie Lamport, “LaTeX: A Document Preparation System,” Software: Practice and Experience, 1994.
+
+### Formatting Notes
+
+- If a field is missing, it is omitted or replaced with a reasonable fallback (e.g., `"Unknown"` for authors)
+- No strict formatting of author initials is performed
+- Should include support for volume, number, and pages when present in the .bib file.
+- The emphasis is on simplicity, readability, and deterministic output
+
+### Resolution Rules
+
+- All citations are resolved against the active bibliography sources
+- Missing keys produce [?] in the rendered output
+- Duplicate keys across sources also produce warnings
+- Only citations outside of code blocks, inline code, and HTML comments are processed
+
+### Global Citation State
+
+Citation numbering is **not maintained continuously**. Instead:
+
+- A notebook-wide citation map is rebuilt from scratch
+- Keys are collected in notebook order
+- Each unique key is assigned a number
+- All occurrences of a key share the same number
+
+### Synchronization Point
+
+The bibliography cell acts as the **explicit synchronization point**.
+
+When the bibliography cell is executed:
+
+1. All markdown cells are scanned
+2. Citation keys are collected and deduplicated
+3. Citation numbers are assigned
+4. The global citation state is replaced
+5. The `.bib` file is reloaded if needed
+6. The bibliography is rendered using the updated state
+
+### Rendering Behavior
+
+- After execution of the bibliography cell, the bibliography cell reflects
+  the **current global citation state**
+- Other markdown cells are **not automatically rerendered**
+- Citation displays in those cells may be temporarily stale
+- Cells become consistent when they are **individually rerendered**
+- Thus the objective is eventual consistency.
+
+This results in **eventual consistency** across the notebook.
+
+### Bibliography Loading
+
+- Bibliography files are cached
+- On bibliography render, the system checks whether the `.bib` source has changed
+- If changed, the file is reloaded and reparsed
+- Otherwise, the cached version is reused
+
+### Design Rationale
+
+This approach avoids:
+
+- incremental state updates
+- reference counting for citation usage
+- complexity from cell insertion, deletion, or reordering
+- global rerendering of the notebook as citations are added or removed.
+- fragile reactive behavior tied to DOM or execution timing
+
+Instead, it relies on:
+
+- explicit recomputation
+- clear synchronization points
+- simple, predictable state transitions
+
+This trade-off favors correctness, maintainability, and resilience over
+immediate visual consistency.
+
+### Design Notes
+
+- Citation handling is implemented separately from cross-references
+- parsing individual cells looking for citations may appear in `syntax.ts`
+  in `scanCitations`.
+- Bibliography logic resides in `bib.ts`
+- Rendering integrates both citation and reference transforms at display time
+
 
 ## Test oracle
 

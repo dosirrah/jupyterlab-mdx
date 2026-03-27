@@ -429,6 +429,9 @@ test.describe('mdx citations / consistency model', () => {
     expect(text).toContain('LaTeX: A Document Preparation System');
     expect(text).toContain('Software: Practice and Experience');
     expect(text).toContain('1994');
+
+    // Verify the venue is rendered as italic (markdown *...* → <em>...</em>)
+    await expect(page.locator('.jp-MarkdownCell em')).toContainText('Software: Practice and Experience');
   });
 
   test('multiple_entries.bib preserves bibliography order according to citation order, not full .bib contents', async ({ page }) => {

@@ -18,6 +18,17 @@ def md_cell(source: str):
         "source": source.splitlines(keepends=True),
     }
 
+def code_cell(source: str):
+    cell_id = hashlib.sha256(("code:" + source).encode("utf-8")).hexdigest()[:8]
+    return {
+        "cell_type": "code",
+        "id": cell_id,
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": source.splitlines(keepends=True),
+    }
+
 def notebook(cells):
     return {
         "cells": cells,
@@ -35,3 +46,4 @@ def notebook(cells):
         "nbformat": 4,
         "nbformat_minor": 5
     }
+

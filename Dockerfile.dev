@@ -52,5 +52,9 @@ RUN pip install \
     tqdm \
     ipywidgets
 
+# Disable Jupyter Server 2.x authentication (required for Playwright tests).
+RUN mkdir -p /home/jovyan/.jupyter
+COPY --chown=jovyan:jovyan jupyter_server_config.py /home/jovyan/.jupyter/jupyter_server_config.py
+
 # The extension itself is installed at container startup from the
 # mounted source tree; see docker-compose.dev.yml.

@@ -135,8 +135,14 @@ RUN test -f /home/jovyan/.venv/share/jupyter/labextensions/jupyterlab-mdx/packag
     && echo "✅ Wheel installed labextension files as expected"
 RUN jupyter labextension list && echo "✅ Extension is registered"
 
+# 7. Write a Jupyter server config that disables authentication entirely.
+#    Jupyter Server 2.x requires a custom IdentityProvider to bypass the
+#    login redirect that otherwise occurs even with an empty token.
+RUN mkdir -p /home/jovyan/.jupyter
+COPY --chown=jovyan:jovyan jupyter_server_config.py /home/jovyan/.jupyter/jupyter_server_config.py
+
 # 8. Default command: launch JupyterLab (no browser, no token)
-CMD ["jupyter", "lab", "--ip=0.0.0.0", "--no-browser", "--ServerApp.token=''", "--NotebookApp.notebook_dir=/home/jovyan/repo"]
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--no-browser", "--ServerApp.token=", "--NotebookApp.notebook_dir=/home/jovyan/repo"]
 
 # To test environment.
 #CMD ["bash"]

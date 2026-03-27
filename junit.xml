@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="103" failures="0" errors="0" time="2.124">
-  <testsuite name="mdx syntax / normalize" errors="0" failures="0" skipped="0" timestamp="2026-03-25T22:01:30" time="0.885" tests="27">
+<testsuites name="jest tests" tests="120" failures="0" errors="0" time="2.464">
+  <testsuite name="mdx syntax / normalize" errors="0" failures="0" skipped="0" timestamp="2026-03-26T23:53:50" time="1.052" tests="27">
     <testcase classname="mdx syntax / normalize normalizes &quot;Foo&quot; to &quot;foo&quot;" name="mdx syntax / normalize normalizes &quot;Foo&quot; to &quot;foo&quot;" time="0.003">
     </testcase>
     <testcase classname="mdx syntax / normalize leaves lowercase alphanumeric text unchanged except for case normalization" name="mdx syntax / normalize leaves lowercase alphanumeric text unchanged except for case normalization" time="0">
     </testcase>
     <testcase classname="mdx syntax / normalize removes underscores" name="mdx syntax / normalize removes underscores" time="0">
     </testcase>
-    <testcase classname="mdx syntax / normalize removes whitespace" name="mdx syntax / normalize removes whitespace" time="0">
+    <testcase classname="mdx syntax / normalize removes whitespace" name="mdx syntax / normalize removes whitespace" time="0.001">
     </testcase>
     <testcase classname="mdx syntax / normalize removes punctuation" name="mdx syntax / normalize removes punctuation" time="0">
     </testcase>
@@ -25,9 +25,9 @@
     </testcase>
     <testcase classname="mdx syntax / scanLabels finds an explicit label in body text" name="mdx syntax / scanLabels finds an explicit label in body text" time="0">
     </testcase>
-    <testcase classname="mdx syntax / scanLabels finds multiple explicit labels in body text in first-appearance order" name="mdx syntax / scanLabels finds multiple explicit labels in body text in first-appearance order" time="0.001">
+    <testcase classname="mdx syntax / scanLabels finds multiple explicit labels in body text in first-appearance order" name="mdx syntax / scanLabels finds multiple explicit labels in body text in first-appearance order" time="0">
     </testcase>
-    <testcase classname="mdx syntax / scanLabels deduplicates repeated labels within a cell while preserving first appearance order" name="mdx syntax / scanLabels deduplicates repeated labels within a cell while preserving first appearance order" time="0">
+    <testcase classname="mdx syntax / scanLabels includes repeated labels in order of appearance" name="mdx syntax / scanLabels includes repeated labels in order of appearance" time="0">
     </testcase>
     <testcase classname="mdx syntax / scanLabels recognizes a title as a level-1 heading" name="mdx syntax / scanLabels recognizes a title as a level-1 heading" time="0">
     </testcase>
@@ -39,9 +39,9 @@
     </testcase>
     <testcase classname="mdx syntax / scanLabels recognizes an explicit label in a subsection heading" name="mdx syntax / scanLabels recognizes an explicit label in a subsection heading" time="0">
     </testcase>
-    <testcase classname="mdx syntax / scanLabels recognizes multiple explicit labels in headings and body text" name="mdx syntax / scanLabels recognizes multiple explicit labels in headings and body text" time="0.001">
+    <testcase classname="mdx syntax / scanLabels recognizes multiple explicit labels in headings and body text" name="mdx syntax / scanLabels recognizes multiple explicit labels in headings and body text" time="0">
     </testcase>
-    <testcase classname="mdx syntax / scanLabels preserves heading text while extracting an explicit label" name="mdx syntax / scanLabels preserves heading text while extracting an explicit label" time="0">
+    <testcase classname="mdx syntax / scanLabels preserves heading text while extracting an explicit label" name="mdx syntax / scanLabels preserves heading text while extracting an explicit label" time="0.001">
     </testcase>
     <testcase classname="mdx syntax / scanLabels does not recognize labels inside inline code" name="mdx syntax / scanLabels does not recognize labels inside inline code" time="0">
     </testcase>
@@ -56,20 +56,38 @@
     <testcase classname="mdx syntax / scanLabels returns empty analysis for input with no labels or headings" name="mdx syntax / scanLabels returns empty analysis for input with no labels or headings" time="0">
     </testcase>
   </testsuite>
-  <testsuite name="mdx references / scanNotebook" errors="0" failures="0" skipped="0" timestamp="2026-03-25T22:01:30" time="1.563" tests="76">
+  <testsuite name="mdx references / scanNotebook" errors="0" failures="0" skipped="0" timestamp="2026-03-26T23:53:50" time="1.789" tests="93">
     <testcase classname="mdx references / scanNotebook returns no sections for an empty notebook" name="mdx references / scanNotebook returns no sections for an empty notebook" time="0.002">
     </testcase>
     <testcase classname="mdx references / scanNotebook returns no sections for cells without headings" name="mdx references / scanNotebook returns no sections for cells without headings" time="0.001">
     </testcase>
-    <testcase classname="mdx references / scanNotebook numbers a single label" name="mdx references / scanNotebook numbers a single label" time="0">
+    <testcase classname="mdx references / scanNotebook numbers a single global-enumeration label" name="mdx references / scanNotebook numbers a single global-enumeration label" time="0">
+    </testcase>
+    <testcase classname="mdx references / scanNotebook records global enumeration entries with name &quot;global&quot;" name="mdx references / scanNotebook records global enumeration entries with name &quot;global&quot;" time="0">
     </testcase>
     <testcase classname="mdx references / scanNotebook numbers multiple global-enumeration labels in first appearance order" name="mdx references / scanNotebook numbers multiple global-enumeration labels in first appearance order" time="0">
     </testcase>
+    <testcase classname="mdx references / scanNotebook tracks named enumerations separately from the global enumeration" name="mdx references / scanNotebook tracks named enumerations separately from the global enumeration" time="0.001">
+    </testcase>
+    <testcase classname="mdx references / scanNotebook allows the same member name in different named enumerations" name="mdx references / scanNotebook allows the same member name in different named enumerations" time="0">
+    </testcase>
+    <testcase classname="mdx references / scanNotebook allows the same member name in the global and a named enumeration" name="mdx references / scanNotebook allows the same member name in the global and a named enumeration" time="0">
+    </testcase>
+    <testcase classname="mdx references / scanNotebook rejects duplicate labels within the same named enumeration" name="mdx references / scanNotebook rejects duplicate labels within the same named enumeration" time="0.014">
+    </testcase>
+    <testcase classname="mdx references / scanNotebook rejects eq labels outside display math blocks" name="mdx references / scanNotebook rejects eq labels outside display math blocks" time="0">
+    </testcase>
+    <testcase classname="mdx references / scanNotebook rejects eq labels in headings" name="mdx references / scanNotebook rejects eq labels in headings" time="0.001">
+    </testcase>
+    <testcase classname="mdx references / scanNotebook accepts eq labels inside $ blocks" name="mdx references / scanNotebook accepts eq labels inside $ blocks" time="0">
+    </testcase>
+    <testcase classname="mdx references / scanNotebook accepts eq labels inside \[ \] blocks" name="mdx references / scanNotebook accepts eq labels inside \[ \] blocks" time="0">
+    </testcase>
     <testcase classname="mdx references / scanNotebook numbers a single section as 1" name="mdx references / scanNotebook numbers a single section as 1" time="0">
     </testcase>
-    <testcase classname="mdx references / scanNotebook does not number a level-1 title as a section" name="mdx references / scanNotebook does not number a level-1 title as a section" time="0.001">
+    <testcase classname="mdx references / scanNotebook does not number a level-1 title as a section" name="mdx references / scanNotebook does not number a level-1 title as a section" time="0">
     </testcase>
-    <testcase classname="mdx references / scanNotebook numbers sections globally across notebook cells" name="mdx references / scanNotebook numbers sections globally across notebook cells" time="0">
+    <testcase classname="mdx references / scanNotebook numbers sections globally across notebook cells" name="mdx references / scanNotebook numbers sections globally across notebook cells" time="0.001">
     </testcase>
     <testcase classname="mdx references / scanNotebook numbers headings in appearance order within a single cell" name="mdx references / scanNotebook numbers headings in appearance order within a single cell" time="0">
     </testcase>
@@ -79,13 +97,13 @@
     </testcase>
     <testcase classname="mdx references / scanNotebook numbers subsections under their enclosing section" name="mdx references / scanNotebook numbers subsections under their enclosing section" time="0">
     </testcase>
-    <testcase classname="mdx references / scanNotebook restarts subsection numbering when a new section begins" name="mdx references / scanNotebook restarts subsection numbering when a new section begins" time="0.001">
+    <testcase classname="mdx references / scanNotebook restarts subsection numbering when a new section begins" name="mdx references / scanNotebook restarts subsection numbering when a new section begins" time="0">
     </testcase>
     <testcase classname="mdx references / scanNotebook numbers deeply nested headings hierarchically" name="mdx references / scanNotebook numbers deeply nested headings hierarchically" time="0">
     </testcase>
     <testcase classname="mdx references / scanNotebook creates labels from section titles for implicit sections" name="mdx references / scanNotebook creates labels from section titles for implicit sections" time="0">
     </testcase>
-    <testcase classname="mdx references / scanNotebook normalizes implicit section labels by lowercasing and removing spaces, punctuation, and underscores" name="mdx references / scanNotebook normalizes implicit section labels by lowercasing and removing spaces, punctuation, and underscores" time="0">
+    <testcase classname="mdx references / scanNotebook normalizes implicit section labels by lowercasing and removing spaces, punctuation, and underscores" name="mdx references / scanNotebook normalizes implicit section labels by lowercasing and removing spaces, punctuation, and underscores" time="0.001">
     </testcase>
     <testcase classname="mdx references / scanNotebook records an explicit label on a section heading" name="mdx references / scanNotebook records an explicit label on a section heading" time="0">
     </testcase>
@@ -93,7 +111,7 @@
     </testcase>
     <testcase classname="mdx references / scanNotebook preserves notebook-global numbering across cells with multiple headings" name="mdx references / scanNotebook preserves notebook-global numbering across cells with multiple headings" time="0">
     </testcase>
-    <testcase classname="mdx references / scanNotebook ignores headings inside fenced code blocks" name="mdx references / scanNotebook ignores headings inside fenced code blocks" time="0">
+    <testcase classname="mdx references / scanNotebook ignores headings inside fenced code blocks" name="mdx references / scanNotebook ignores headings inside fenced code blocks" time="0.006">
     </testcase>
     <testcase classname="mdx references / scanNotebook ignores headings inside HTML comments" name="mdx references / scanNotebook ignores headings inside HTML comments" time="0">
     </testcase>
@@ -109,15 +127,15 @@
     </testcase>
     <testcase classname="mdx references / scanNotebook continues numbering correctly when explicit and implicit sections are mixed across cells" name="mdx references / scanNotebook continues numbering correctly when explicit and implicit sections are mixed across cells" time="0">
     </testcase>
-    <testcase classname="mdx references / DuplicateLabelError throws when two explicit body labels normalize to the same canonical label" name="mdx references / DuplicateLabelError throws when two explicit body labels normalize to the same canonical label" time="0.01">
+    <testcase classname="mdx references / DuplicateLabelError throws when two explicit body labels normalize to the same canonical label" name="mdx references / DuplicateLabelError throws when two explicit body labels normalize to the same canonical label" time="0.001">
     </testcase>
     <testcase classname="mdx references / DuplicateLabelError throws when two implicit section labels normalize to the same canonical label" name="mdx references / DuplicateLabelError throws when two implicit section labels normalize to the same canonical label" time="0">
     </testcase>
     <testcase classname="mdx references / DuplicateLabelError throws when an explicit section label collides with an implicit section label" name="mdx references / DuplicateLabelError throws when an explicit section label collides with an implicit section label" time="0">
     </testcase>
-    <testcase classname="mdx references / DuplicateLabelError throws when an explicit body label collides with an implicit section label" name="mdx references / DuplicateLabelError throws when an explicit body label collides with an implicit section label" time="0.001">
+    <testcase classname="mdx references / DuplicateLabelError throws when an explicit body label collides with an implicit section label" name="mdx references / DuplicateLabelError throws when an explicit body label collides with an implicit section label" time="0">
     </testcase>
-    <testcase classname="mdx references / DuplicateLabelError throws when two explicit section labels normalize to the same canonical label" name="mdx references / DuplicateLabelError throws when two explicit section labels normalize to the same canonical label" time="0">
+    <testcase classname="mdx references / DuplicateLabelError throws when two explicit section labels normalize to the same canonical label" name="mdx references / DuplicateLabelError throws when two explicit section labels normalize to the same canonical label" time="0.001">
     </testcase>
     <testcase classname="mdx references / DuplicateLabelError throws when an explicit section label collides with an explicit body label" name="mdx references / DuplicateLabelError throws when an explicit section label collides with an explicit body label" time="0">
     </testcase>
@@ -125,9 +143,13 @@
     </testcase>
     <testcase classname="mdx references / DuplicateLabelError allows repeated section titles when they have distinct explicit labels" name="mdx references / DuplicateLabelError allows repeated section titles when they have distinct explicit labels" time="0">
     </testcase>
-    <testcase classname="mdx references / DuplicateLabelError throws when only one of two otherwise-duplicate sections has an explicit label" name="mdx references / DuplicateLabelError throws when only one of two otherwise-duplicate sections has an explicit label" time="0.001">
+    <testcase classname="mdx references / DuplicateLabelError throws when only one of two otherwise-duplicate sections has an explicit label" name="mdx references / DuplicateLabelError throws when only one of two otherwise-duplicate sections has an explicit label" time="0">
     </testcase>
     <testcase classname="mdx references / DuplicateLabelError does not throw when labels are distinct after normalization" name="mdx references / DuplicateLabelError does not throw when labels are distinct after normalization" time="0">
+    </testcase>
+    <testcase classname="mdx references / DuplicateLabelError does not throw when labels are distinct because they are in different enumerations" name="mdx references / DuplicateLabelError does not throw when labels are distinct because they are in different enumerations" time="0">
+    </testcase>
+    <testcase classname="mdx references / DuplicateLabelError throws an exception when attempting to use named enumerations in section headings" name="mdx references / DuplicateLabelError throws an exception when attempting to use named enumerations in section headings" time="0">
     </testcase>
     <testcase classname="mdx references / resolveReference returns null for an unresolved reference in an empty notebook" name="mdx references / resolveReference returns null for an unresolved reference in an empty notebook" time="0">
     </testcase>
@@ -139,13 +161,17 @@
     </testcase>
     <testcase classname="mdx references / resolveReference does not prefix-match explicit global-enumeration labels" name="mdx references / resolveReference does not prefix-match explicit global-enumeration labels" time="0">
     </testcase>
+    <testcase classname="mdx references / resolveReference resolves a named-enumeration label by exact match" name="mdx references / resolveReference resolves a named-enumeration label by exact match" time="0">
+    </testcase>
+    <testcase classname="mdx references / resolveReference does not fall back across enumerations when resolving references" name="mdx references / resolveReference does not fall back across enumerations when resolving references" time="0.001">
+    </testcase>
     <testcase classname="mdx references / resolveReference resolves an explicit section label by exact match" name="mdx references / resolveReference resolves an explicit section label by exact match" time="0">
     </testcase>
     <testcase classname="mdx references / resolveReference does not use implicit title matching for a section with an explicit label" name="mdx references / resolveReference does not use implicit title matching for a section with an explicit label" time="0">
     </testcase>
     <testcase classname="mdx references / resolveReference resolves an implicit section label by exact canonical match" name="mdx references / resolveReference resolves an implicit section label by exact canonical match" time="0">
     </testcase>
-    <testcase classname="mdx references / resolveReference resolves an implicit section label by normalized prefix match" name="mdx references / resolveReference resolves an implicit section label by normalized prefix match" time="0.001">
+    <testcase classname="mdx references / resolveReference resolves an implicit section label by normalized prefix match" name="mdx references / resolveReference resolves an implicit section label by normalized prefix match" time="0">
     </testcase>
     <testcase classname="mdx references / resolveReference matches implicit section labels case-insensitively" name="mdx references / resolveReference matches implicit section labels case-insensitively" time="0">
     </testcase>
@@ -159,11 +185,11 @@
     </testcase>
     <testcase classname="mdx references / resolveReference returns null for ambiguous implicit prefixes" name="mdx references / resolveReference returns null for ambiguous implicit prefixes" time="0">
     </testcase>
-    <testcase classname="mdx references / resolveReference resolves notebook-global labels across multiple cells" name="mdx references / resolveReference resolves notebook-global labels across multiple cells" time="0">
+    <testcase classname="mdx references / resolveReference resolves notebook-global labels across multiple cells" name="mdx references / resolveReference resolves notebook-global labels across multiple cells" time="0.001">
     </testcase>
     <testcase classname="mdx references / resolveReference resolves sections with forgiving numbering by label rather than by depth" name="mdx references / resolveReference resolves sections with forgiving numbering by label rather than by depth" time="0">
     </testcase>
-    <testcase classname="mdx references / resolveReference normalizes punctuation, whitespace, and underscores before matching implicit labels" name="mdx references / resolveReference normalizes punctuation, whitespace, and underscores before matching implicit labels" time="0.001">
+    <testcase classname="mdx references / resolveReference normalizes punctuation, whitespace, and underscores before matching implicit labels" name="mdx references / resolveReference normalizes punctuation, whitespace, and underscores before matching implicit labels" time="0">
     </testcase>
     <testcase classname="mdx references / transformMarkdown returns unchanged text for a cell with no headings or references" name="mdx references / transformMarkdown returns unchanged text for a cell with no headings or references" time="0">
     </testcase>
@@ -171,7 +197,9 @@
     </testcase>
     <testcase classname="mdx references / transformMarkdown numbers an explicitly labelled section heading the same way as an implicit one" name="mdx references / transformMarkdown numbers an explicitly labelled section heading the same way as an implicit one" time="0">
     </testcase>
-    <testcase classname="mdx references / transformMarkdown numbers a single global-enumeration label" name="mdx references / transformMarkdown numbers a single global-enumeration label" time="0">
+    <testcase classname="mdx references / transformMarkdown numbers a single global-enumeration label" name="mdx references / transformMarkdown numbers a single global-enumeration label" time="0.001">
+    </testcase>
+    <testcase classname="mdx references / transformMarkdown numbers a named-enumeration label using its own enumeration" name="mdx references / transformMarkdown numbers a named-enumeration label using its own enumeration" time="0">
     </testcase>
     <testcase classname="mdx references / transformMarkdown numbers multiple global-enumeration labels in one cell" name="mdx references / transformMarkdown numbers multiple global-enumeration labels in one cell" time="0">
     </testcase>
@@ -181,11 +209,13 @@
     </testcase>
     <testcase classname="mdx references / transformMarkdown resolves an implicit section reference by prefix" name="mdx references / transformMarkdown resolves an implicit section reference by prefix" time="0">
     </testcase>
-    <testcase classname="mdx references / transformMarkdown resolves an explicit section reference by exact label" name="mdx references / transformMarkdown resolves an explicit section reference by exact label" time="0.001">
+    <testcase classname="mdx references / transformMarkdown resolves an explicit section reference by exact label" name="mdx references / transformMarkdown resolves an explicit section reference by exact label" time="0">
     </testcase>
     <testcase classname="mdx references / transformMarkdown resolves an explicit global-enumeration reference by exact label" name="mdx references / transformMarkdown resolves an explicit global-enumeration reference by exact label" time="0">
     </testcase>
-    <testcase classname="mdx references / transformMarkdown does not use implicit title matching for explicitly labelled sections" name="mdx references / transformMarkdown does not use implicit title matching for explicitly labelled sections" time="0">
+    <testcase classname="mdx references / transformMarkdown resolves a named-enumeration reference by exact label" name="mdx references / transformMarkdown resolves a named-enumeration reference by exact label" time="0">
+    </testcase>
+    <testcase classname="mdx references / transformMarkdown does not use implicit title matching for explicitly labelled sections" name="mdx references / transformMarkdown does not use implicit title matching for explicitly labelled sections" time="0.001">
     </testcase>
     <testcase classname="mdx references / transformMarkdown prefers exact explicit-label matches over implicit prefix matches" name="mdx references / transformMarkdown prefers exact explicit-label matches over implicit prefix matches" time="0">
     </testcase>
@@ -201,13 +231,17 @@
     </testcase>
     <testcase classname="mdx references / transformMarkdown does not recognize references inside inline code" name="mdx references / transformMarkdown does not recognize references inside inline code" time="0">
     </testcase>
-    <testcase classname="mdx references / transformMarkdown does not recognize references inside fenced code blocks" name="mdx references / transformMarkdown does not recognize references inside fenced code blocks" time="0.001">
+    <testcase classname="mdx references / transformMarkdown does not recognize references inside fenced code blocks" name="mdx references / transformMarkdown does not recognize references inside fenced code blocks" time="0">
     </testcase>
     <testcase classname="mdx references / transformMarkdown does not recognize headings inside fenced code blocks" name="mdx references / transformMarkdown does not recognize headings inside fenced code blocks" time="0">
     </testcase>
     <testcase classname="mdx references / transformMarkdown does not recognize references inside HTML comments" name="mdx references / transformMarkdown does not recognize references inside HTML comments" time="0">
     </testcase>
     <testcase classname="mdx references / transformMarkdown preserves literal heading level while applying derived numbering" name="mdx references / transformMarkdown preserves literal heading level while applying derived numbering" time="0">
+    </testcase>
+    <testcase classname="mdx references / transformMarkdown renders equation labels as parenthesized equation tags" name="mdx references / transformMarkdown renders equation labels as parenthesized equation tags" time="0">
+    </testcase>
+    <testcase classname="mdx references / transformMarkdown resolves equation references anywhere markdown references are allowed" name="mdx references / transformMarkdown resolves equation references anywhere markdown references are allowed" time="0">
     </testcase>
   </testsuite>
 </testsuites>

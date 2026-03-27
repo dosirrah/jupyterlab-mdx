@@ -14,8 +14,8 @@ test.describe('mdx implicit label with single cell', () => {
 
   test('subsection renders hierarchical numbering in same cell', async ({ page }) => {
     // notebook fixture cell:
-    // "# First Section"
-    // "## Subsection"
+    // "## First Section"
+    // "### Subsection"
 
     await page.goto('/lab/tree/playwright-tests/fixtures/single_cell_section_and_subsection.ipynb?reset');
 
@@ -27,7 +27,7 @@ test.describe('mdx implicit label with single cell', () => {
 
   test('implicit section reference resolves in same cell', async ({ page }) => {
     // notebook fixture cell:
-    // "# Introduction"
+    // "## Introduction"
     //
     // "See #introduction."
 
@@ -41,9 +41,9 @@ test.describe('mdx implicit label with single cell', () => {
 
   test('multiple implicit sections in one cell number correctly', async ({ page }) => {
     // notebook fixture cell:
-    // "# One"
-    // "## One One"
-    // "# Two"
+    // "## One"
+    // "### One One"
+    // "## Two"
 
     await page.goto('/lab/tree/playwright-tests/fixtures/single_cell_multiple_sections.ipynb?reset');
 
@@ -56,7 +56,7 @@ test.describe('mdx implicit label with single cell', () => {
 
   test('unresolved implicit reference is rendered visibly', async ({ page }) => {
     // notebook fixture cell:
-    // "# Introduction"
+    // "## Introduction"
     //
     // "See #does_not_exist."
 
@@ -76,8 +76,8 @@ test.describe('mdx implicit label with single cell', () => {
     });
 
     // notebook fixture cell:
-    // "# Intro"
-    // "# Intro"
+    // "## Intro"
+    // "## Intro"
 
     await page.goto('/lab/tree/playwright-tests/fixtures/single_cell_implicit_duplicate.ipynb?reset');
 
@@ -126,10 +126,10 @@ test.describe('mdx implicit label with multiple cells', () => {
 
   test('subsections continue correctly across cells', async ({ page }) => {
     // notebook fixture cells:
-    // cell 1: "# First"
-    // cell 2: "## Details"
-    // cell 3: "## More Details"
-    // cell 4: "# Second"
+    // cell 1: "## First"
+    // cell 2: "### Details"
+    // cell 3: "### More Details"
+    // cell 4: "## Second"
 
     await page.goto('/lab/tree/playwright-tests/fixtures/multi_cell_sections_and_subsections.ipynb?reset');
 
@@ -143,10 +143,10 @@ test.describe('mdx implicit label with multiple cells', () => {
 
   test('subsection under second section resets numbering correctly', async ({ page }) => {
     // notebook fixture cells:
-    // cell 1: "# First"
-    // cell 2: "## First Child"
-    // cell 3: "# Second"
-    // cell 4: "## Second Child"
+    // cell 1: "## First"
+    // cell 2: "### First Child"
+    // cell 3: "## Second"
+    // cell 4: "### Second Child"
 
     await page.goto('/lab/tree/playwright-tests/fixtures/multi_cell_subsection_reset.ipynb?reset');
 
@@ -160,9 +160,9 @@ test.describe('mdx implicit label with multiple cells', () => {
 
   test('deep hierarchy numbers correctly across cells', async ({ page }) => {
     // notebook fixture cells:
-    // cell 1: "# A"
-    // cell 2: "## B"
-    // cell 3: "### C"
+    // cell 1: "## A"
+    // cell 2: "### B"
+    // cell 3: "#### C"
 
     await page.goto('/lab/tree/playwright-tests/fixtures/multi_cell_deep_hierarchy.ipynb?reset');
 
@@ -176,7 +176,7 @@ test.describe('mdx implicit label with multiple cells', () => {
   test('forward implicit reference resolves after full notebook scan', async ({ page }) => {
     // notebook fixture cells:
     // cell 1: "See #discussion."
-    // cell 2: "# Discussion"
+    // cell 2: "## Discussion"
 
     await page.goto('/lab/tree/playwright-tests/fixtures/multi_cell_implicit_forward_reference.ipynb?reset');
 
@@ -191,7 +191,7 @@ test.describe('mdx implicit label with multiple cells', () => {
 
   test('unresolved implicit reference in later cell is rendered visibly', async ({ page }) => {
     // notebook fixture cells:
-    // cell 1: "# Introduction"
+    // cell 1: "## Introduction"
     // cell 2: "See #missing_section."
 
     await page.goto('/lab/tree/playwright-tests/fixtures/multi_cell_implicit_unresolved.ipynb?reset');
@@ -233,8 +233,8 @@ test.describe('mdx implicit label with multiple cells', () => {
     });
 
     // notebook fixture cells:
-    // cell 1: "# Intro"
-    // cell 2: "# Intro"
+    // cell 1: "## Intro"
+    // cell 2: "## Intro"
 
     await page.goto('/lab/tree/playwright-tests/fixtures/multi_cell_implicit_duplicate.ipynb?reset');
 
@@ -253,8 +253,8 @@ test.describe('mdx implicit label with multiple cells', () => {
 
   test('multiple implicit references in later cell all resolve', async ({ page }) => {
     // notebook fixture cells:
-    // cell 1: "# Intro"
-    // cell 2: "# Methods"
+    // cell 1: "## Intro"
+    // cell 2: "## Methods"
     // cell 3: "See #intro and #methods."
 
     await page.goto('/lab/tree/playwright-tests/fixtures/multi_cell_multiple_implicit_references.ipynb?reset');

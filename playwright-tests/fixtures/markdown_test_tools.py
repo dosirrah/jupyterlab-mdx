@@ -47,3 +47,19 @@ def notebook(cells):
         "nbformat_minor": 5
     }
 
+
+def bib_entry(
+    key: str,
+    entry_type: str = "article",
+    **fields: str
+) -> str:
+    lines = [f"@{entry_type}{{{key},"]
+    for name, value in fields.items():
+        lines.append(f"  {name} = {{{value}}},")
+    lines.append("}")
+    return "\n".join(lines) + "\n"
+
+def bib_file(entries) -> str:
+    return "\n".join(entry.rstrip() for entry in entries) + "\n"
+
+

@@ -1,4 +1,4 @@
-import { scanLabels, normalize } from './syntax';
+import { scanLabels, normalize, HeadingLabelError } from './syntax';
 
 export interface SectionInfo {
   kind: 'section';
@@ -8,8 +8,8 @@ export interface SectionInfo {
   isExplicit: boolean;
 }
 
-// @foo is a in the global enumeration.  @boo:foo is label `foo`
-// in the enumeration `boo`.
+// @foo is in the global enumeration.  @fig:foo is label `foo`
+// in the enumeration `fig`.
 export interface EnumerationInfo {
   kind: 'enumeration';
   name: string;       // 'global', 'fig', 'eq', ...
@@ -20,14 +20,11 @@ export type LabelInfo = SectionInfo | EnumerationInfo;
 
 export interface NotebookState {
   labels: Map<string, LabelInfo>;
-  sections: string[];      // ordered canonical labels of sections
-  //enumeration: string[];   // ordered canonical labels in the global enumeration (deprecated because the global enumeration appears as one enumeration in enumeratoins.
-  enumerations: Map<string, string[]> // ordered canonical label for a named enumeration
-  duplicates: Set<string>; // canonical labels that appeared more than once
-  // Maps canonical label → markdown-cell indices that are secondary occurrences.
-  // The primary (first) occurrence is NOT listed here.  Used by transformMarkdown
-  // when a cell index is available so that only the secondary gets the warning.
+  sections: string[];                      // ordered canonical labels of sections
+  enumerations: Map<string, string[]>;     // ordered canonical labels per enumeration
+  duplicates: Set<string>;                 // canonical labels that appeared more than once
   duplicateSecondaries: Map<string, number[]>;
+  primaryCellIndices: Map<string, number>; // canonical label → cell index of primary occurrence
 }
 
 export class DuplicateLabelError extends Error {
@@ -38,6 +35,22 @@ export class DuplicateLabelError extends Error {
     super(`Duplicate canonical label: ${label}`);
     this.name = 'DuplicateLabelError';
     this.label = label;
+  }
+}
+
+export class EnumerationContextError extends Error {
+  enumerationName: string;
+  label: string;
+  context: string;
+
+  constructor(enumerationName: string, label: string, context: string) {
+    super(
+      `Label @${enumerationName}:${label} is not allowed in ${context}`
+    );
+    this.name = 'EnumerationContextError';
+    this.enumerationName = enumerationName;
+    this.label = label;
+    this.context = context;
   }
 }
 
@@ -55,29 +68,23 @@ export class ReservedEnumerationMisuseError extends Error {
 
 interface StackEntry { level: number; counter: number; }
 
-function makeCanonicalLabel(name: string, member: string): string {
-  const n = normalize(name);
-  const m = normalize(member);
-  return n === 'global' ? m : `${n}:${m}`;
-}
-
 /**
  * First pass over the notebook.
  *
  * `cells` contains only markdown cells, in notebook order.
  * Throws `DuplicateLabelError` if two labels normalize to the same canonical label.
- * Throws `ReservedEnumerationMisuseError` if a label belonging to the eq enumeration
- * is created outside of a LaTeX equation block.
+ * Throws `ReservedEnumerationMisuseError` if an eq label appears outside a display math block,
+ * or if a named-enum label of the form @eq:x appears in a section heading.
+ * Throws `EnumerationContextError` if any other named-enum label appears in a section heading.
  */
 export function scanNotebook(cells: string[]): NotebookState {
   const labels = new Map<string, LabelInfo>();
   const sections: string[] = [];
-  const enumeration: string[] = [];
+  const enumerations = new Map<string, string[]>();
   const duplicates = new Set<string>();
   const duplicateSecondaries = new Map<string, number[]>();
+  const primaryCellIndices = new Map<string, number>();
   const stack: StackEntry[] = [];
-  // Tracks normalized titles of ALL sections so that an implicit section
-  // cannot share a title with an existing explicitly-labelled section.
   const reservedTitles = new Set<string>();
   let currentCellIndex = 0;
 
@@ -116,12 +123,34 @@ export function scanNotebook(cells: string[]): NotebookState {
       throw err;
     }
     labels.set(canonicalLabel, info);
+    primaryCellIndices.set(canonicalLabel, currentCellIndex);
+  }
+
+  function addToEnumeration(name: string, label: string, info: EnumerationInfo, state: NotebookState): void {
+    if (!enumerations.has(name)) enumerations.set(name, []);
+    const enumList = enumerations.get(name)!;
+    const enumNumber = String(enumList.length + 1);
+    (info as any).number = enumNumber;
+    registerLabel(label, info, state);
+    enumList.push(label);
   }
 
   for (let ci = 0; ci < cells.length; ci++) {
     currentCellIndex = ci;
     const cellSource = cells[ci];
-    const analysis = scanLabels(cellSource);
+
+    let analysis;
+    try {
+      analysis = scanLabels(cellSource);
+    } catch (err) {
+      if (err instanceof HeadingLabelError) {
+        if (err.enumerationName.toLowerCase() === 'eq') {
+          throw new ReservedEnumerationMisuseError(err.enumerationName, err.member);
+        }
+        throw new EnumerationContextError(err.enumerationName, err.member, 'section heading');
+      }
+      throw err;
+    }
 
     // Track which labels came from headings in this cell
     const headingLabelSet = new Set(
@@ -129,12 +158,10 @@ export function scanNotebook(cells: string[]): NotebookState {
     );
 
     for (const heading of analysis.headings) {
-      // Level-1 headings are titles, not numbered sections
       if (heading.level === 1) continue;
 
       const number = pushHeading(heading.level);
       const canonicalLabel = heading.explicitLabel ?? normalize(heading.title);
-
       const normalizedTitle = normalize(heading.title);
 
       const info: SectionInfo = {
@@ -145,10 +172,8 @@ export function scanNotebook(cells: string[]): NotebookState {
         isExplicit: !!heading.explicitLabel,
       };
 
-      const state: NotebookState = { labels, sections, enumeration, duplicates, duplicateSecondaries };
+      const state: NotebookState = { labels, sections, enumerations, duplicates, duplicateSecondaries, primaryCellIndices };
 
-      // For implicit sections, also check whether the title is already reserved
-      // by an explicit section (which hides the implicit title from resolution).
       if (!heading.explicitLabel && reservedTitles.has(normalizedTitle)) {
         duplicates.add(normalizedTitle);
         const arr = duplicateSecondaries.get(normalizedTitle) ?? [];
@@ -164,19 +189,38 @@ export function scanNotebook(cells: string[]): NotebookState {
       sections.push(canonicalLabel);
     }
 
-    // Non-heading explicit labels → global enumeration
+    // Body labels
     for (const label of analysis.labelsDefined) {
       if (headingLabelSet.has(label)) continue;
 
-      const enumNumber = String(enumeration.length + 1);
-      const info: EnumerationInfo = { kind: 'enumeration', number: enumNumber };
-      const state: NotebookState = { labels, sections, enumeration, duplicates, duplicateSecondaries };
-      registerLabel(label, info, state);
-      enumeration.push(label);
+      const state: NotebookState = { labels, sections, enumerations, duplicates, duplicateSecondaries, primaryCellIndices };
+
+      if (label.includes(':')) {
+        const colonIdx = label.indexOf(':');
+        const name = label.slice(0, colonIdx);
+        const member = label.slice(colonIdx + 1);
+
+        if (name === 'eq') {
+          throw new ReservedEnumerationMisuseError('eq', member);
+        }
+
+        const info: EnumerationInfo = { kind: 'enumeration', name, number: '' };
+        addToEnumeration(name, label, info, state);
+      } else {
+        const info: EnumerationInfo = { kind: 'enumeration', name: 'global', number: '' };
+        addToEnumeration('global', label, info, state);
+      }
+    }
+
+    // Equation labels from display math
+    for (const label of analysis.eqLabels) {
+      const state: NotebookState = { labels, sections, enumerations, duplicates, duplicateSecondaries, primaryCellIndices };
+      const info: EnumerationInfo = { kind: 'enumeration', name: 'eq', number: '' };
+      addToEnumeration('eq', label, info, state);
     }
   }
 
-  return { labels, sections, enumeration, duplicates, duplicateSecondaries };
+  return { labels, sections, enumerations, duplicates, duplicateSecondaries, primaryCellIndices };
 }
 
 /**
@@ -187,6 +231,12 @@ export function scanNotebook(cells: string[]): NotebookState {
  *   2. Unique prefix match against implicit section labels only
  */
 export function resolveReference(ref: string, state: NotebookState): string | null {
+  if (ref.includes(':')) {
+    const colonIdx = ref.indexOf(':');
+    const canonical = normalize(ref.slice(0, colonIdx)) + ':' + normalize(ref.slice(colonIdx + 1));
+    return state.labels.has(canonical) ? canonical : null;
+  }
+
   const normalizedRef = normalize(ref);
 
   if (state.labels.has(normalizedRef)) {
@@ -225,17 +275,29 @@ function transformActiveParts(line: string, fn: (text: string) => string): strin
   return parts.join('');
 }
 
-function transformBodyText(text: string, state: NotebookState): string {
-  // Replace @label with its number
-  let result = text.replace(/@(\w+)/g, (match, raw) => {
-    const canonical = normalize(raw);
-    if (state.duplicates.has(canonical)) return `⚠ duplicate: @${raw}`;
+function transformBodyText(text: string, state: NotebookState, cellIndex?: number, cellOccurrences?: Map<string, number>): string {
+  // Replace @label (including @name:member) with its number
+  let result = text.replace(/@(\w+(?::\w+)?)/g, (match, raw) => {
+    const canonical = raw.includes(':')
+      ? normalize(raw.slice(0, raw.indexOf(':'))) + ':' + normalize(raw.slice(raw.indexOf(':') + 1))
+      : normalize(raw);
+    let isSecondary: boolean;
+    if (typeof cellIndex === 'number' && cellOccurrences) {
+      const count = (cellOccurrences.get(canonical) ?? 0) + 1;
+      cellOccurrences.set(canonical, count);
+      const primCell = state.primaryCellIndices?.get(canonical);
+      const inSecondaries = (state.duplicateSecondaries?.get(canonical) ?? []).includes(cellIndex);
+      isSecondary = inSecondaries && (primCell !== cellIndex || count > 1);
+    } else {
+      isSecondary = state.duplicates.has(canonical);
+    }
+    if (isSecondary) return `⚠ duplicate: @${raw}`;
     const info = state.labels.get(canonical);
     return info ? info.number : match;
   });
 
-  // Replace #ref with resolved number or warning
-  result = result.replace(/#(\w+)/g, (match, ref) => {
+  // Replace #ref (including #name:member) with resolved number or warning
+  result = result.replace(/#(\w+(?::\w+)?)/g, (match, ref) => {
     const canonical = resolveReference(ref, state);
     if (!canonical) return `⚠ unresolved: ${match}`;
     const info = state.labels.get(canonical);
@@ -256,6 +318,9 @@ export function transformMarkdown(md: string, state: NotebookState, cellIndex?: 
   const result: string[] = [];
   let inFencedBlock = false;
   let inHtmlComment = false;
+  let inDisplayMath = false;
+  let pendingEqDuplicates: string[] = [];
+  const cellOccurrences = new Map<string, number>();
 
   for (const line of lines) {
     // HTML comment tracking
@@ -281,6 +346,74 @@ export function transformMarkdown(md: string, state: NotebookState, cellIndex?: 
     if (line.trimStart().startsWith('<!--')) {
       if (!line.includes('-->')) inHtmlComment = true;
       result.push(line);
+      continue;
+    }
+
+    // Helper: replace @eq:label within a display-math string
+    const replaceEqLabels = (s: string): string =>
+      s.replace(/@eq:(\w+)/g, (match, member) => {
+        const canonical = 'eq:' + normalize(member);
+        let isSecondary: boolean;
+        if (typeof cellIndex === 'number') {
+          const count = (cellOccurrences.get(canonical) ?? 0) + 1;
+          cellOccurrences.set(canonical, count);
+          const primCell = state.primaryCellIndices?.get(canonical);
+          const inSecondaries = (state.duplicateSecondaries?.get(canonical) ?? []).includes(cellIndex);
+          isSecondary = inSecondaries && (primCell !== cellIndex || count > 1);
+        } else {
+          isSecondary = state.duplicates.has(canonical);
+        }
+        if (isSecondary) { pendingEqDuplicates.push(`⚠ duplicate: @eq:${member}`); return ''; }
+        const info = state.labels.get(canonical);
+        return info ? `\\tag{${info.number}}` : match;
+      });
+
+    // Display math delimiters
+    const trimmed = line.trim();
+    if (trimmed === '$$') {
+      if (inDisplayMath) {
+        inDisplayMath = false;
+        result.push(line);
+        for (const dup of pendingEqDuplicates) result.push(dup);
+        pendingEqDuplicates = [];
+      } else {
+        inDisplayMath = true;
+        result.push(line);
+      }
+      continue;
+    }
+    if (trimmed === '\\[') { inDisplayMath = true; result.push(line.replace('\\[', '$$')); continue; }
+    if (trimmed === '\\]') {
+      inDisplayMath = false;
+      result.push(line.replace('\\]', '$$'));
+      for (const dup of pendingEqDuplicates) result.push(dup);
+      pendingEqDuplicates = [];
+      continue;
+    }
+
+    // Single-line $$...$$ block
+    if (!inDisplayMath && trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
+      result.push(replaceEqLabels(line));
+      continue;
+    }
+    // Opening $$ with inline content
+    if (!inDisplayMath && trimmed.startsWith('$$') && trimmed.length > 2) {
+      inDisplayMath = true;
+      result.push(replaceEqLabels(line));
+      continue;
+    }
+    // Closing $$ with inline content
+    if (inDisplayMath && trimmed.endsWith('$$') && !trimmed.startsWith('$$')) {
+      inDisplayMath = false;
+      result.push(replaceEqLabels(line));
+      for (const dup of pendingEqDuplicates) result.push(dup);
+      pendingEqDuplicates = [];
+      continue;
+    }
+
+    // Inside display math
+    if (inDisplayMath) {
+      result.push(replaceEqLabels(line));
       continue;
     }
 
@@ -325,7 +458,7 @@ export function transformMarkdown(md: string, state: NotebookState, cellIndex?: 
     }
 
     // Body text
-    result.push(transformActiveParts(line, text => transformBodyText(text, state)));
+    result.push(transformActiveParts(line, text => transformBodyText(text, state, cellIndex, cellOccurrences)));
   }
 
   return result.join('\n');

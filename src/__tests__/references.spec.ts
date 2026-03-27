@@ -3,6 +3,7 @@ import {
   resolveReference,
   transformMarkdown,
   DuplicateLabelError,
+  EnumerationContextError,
   ReservedEnumerationMisuseError,
   SectionInfo,
   EnumerationInfo
@@ -125,9 +126,7 @@ describe('mdx references / scanNotebook', () => {
   it('allows the same member name in different named enumerations', () => {
     const state = scanNotebook([
       'Figure @fig:one shows the architecture.',
-      '$$',
-      'E = mc^2   @eq:one',
-      '$$'
+      '$$\nE = mc^2   @eq:one\n$$'
     ]);
 
     expect(state.labels.has('fig:one')).toBe(true);
@@ -193,9 +192,7 @@ describe('mdx references / scanNotebook', () => {
 
   it('accepts eq labels inside $$ blocks', () => {
     const state = scanNotebook([
-      '$$',
-      '\\int_{x=0}^t x^2 dx     @eq:foo',
-      '$$'
+      '$$\n\\int_{x=0}^t x^2 dx     @eq:foo\n$$'
     ]);
 
     expect(state.enumerations.get('eq')).toEqual(['eq:foo']);
@@ -208,9 +205,7 @@ describe('mdx references / scanNotebook', () => {
 
   it('accepts eq labels inside \\[ \\] blocks', () => {
     const state = scanNotebook([
-      '\\[',
-      '\\int_{x=0}^t x^2 dx     @eq:foo',
-      '\\]'
+      '\\[\n\\int_{x=0}^t x^2 dx     @eq:foo\n\\]'
     ]);
 
     expect(state.enumerations.get('eq')).toEqual(['eq:foo']);
@@ -818,11 +813,15 @@ describe('mdx references / DuplicateLabelError', () => {
       scanNotebook([
         'Step @foo',
         'Figure @fig:foo',
-        '$$',
-        'x = y + z   @eq:foo',
-        '$$'
+        '$$\nx = y + z   @eq:foo\n$$'
       ])
     ).not.toThrow();
+  });
+
+  it('throws an exception when attempting to use named enumerations in section headings', () => {
+    expect(() =>
+      scanNotebook(['## @fig:overview Overview'])
+    ).toThrow(EnumerationContextError);
   });
 });
 
@@ -876,9 +875,7 @@ describe('mdx references / resolveReference', () => {
   it('does not fall back across enumerations when resolving references', () => {
     const state = scanNotebook([
       'Figure @fig:one',
-      '$$',
-      'E = mc^2   @eq:one',
-      '$$'
+      '$$\nE = mc^2   @eq:one\n$$'
     ]);
 
     expect(resolveReference('fig:one', state)).toBe('fig:one');
@@ -1285,7 +1282,7 @@ $$
 
     expect(transformMarkdown(md, state)).toBe(`
 $$
-\\int_{x=0}^t x^2 dx     \\tag{(1)}
+\\int_{x=0}^t x^2 dx     \\tag{1}
 $$
 `);
   });

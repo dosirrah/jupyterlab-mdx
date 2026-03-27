@@ -6,7 +6,9 @@ import {
   scanNotebook,
   transformMarkdown,
   NotebookState,
-  DuplicateLabelError
+  DuplicateLabelError,
+  ReservedEnumerationMisuseError,
+  EnumerationContextError
 } from './references';
 
 const stateMap = new WeakMap<NotebookPanel, NotebookState>();
@@ -14,9 +16,10 @@ const stateMap = new WeakMap<NotebookPanel, NotebookState>();
 const emptyState: NotebookState = {
   labels: new Map(),
   sections: [],
-  enumeration: [],
+  enumerations: new Map(),
   duplicates: new Set(),
-  duplicateSecondaries: new Map()
+  duplicateSecondaries: new Map(),
+  primaryCellIndices: new Map()
 };
 
 function getMarkdownSources(panel: NotebookPanel): string[] {
@@ -37,6 +40,11 @@ function doScan(panel: NotebookPanel): NotebookState {
       const state = err.partialState ?? emptyState;
       stateMap.set(panel, state);
       return state;
+    }
+    if (err instanceof ReservedEnumerationMisuseError || err instanceof EnumerationContextError) {
+      console.error(err);
+      stateMap.set(panel, emptyState);
+      return emptyState;
     }
     throw err;
   }

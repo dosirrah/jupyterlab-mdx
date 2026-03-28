@@ -65,6 +65,8 @@ export function scanLabels(md: string): CellAnalysis {
     if (trimmed === '$$') { inDisplayMath = !inDisplayMath; continue; }
     if (trimmed === '\\[') { inDisplayMath = true; continue; }
     if (trimmed === '\\]') { inDisplayMath = false; continue; }
+    if (/^\\begin\{(align|align\*|equation|equation\*|gather|gather\*|multline|multline\*|flalign|flalign\*|eqnarray|eqnarray\*)\}/.test(trimmed)) { inDisplayMath = true; continue; }
+    if (/^\\end\{(align|align\*|equation|equation\*|gather|gather\*|multline|multline\*|flalign|flalign\*|eqnarray|eqnarray\*)\}/.test(trimmed)) { inDisplayMath = false; continue; }
 
     // Single-line $$...$$ block (opening and closing on same line)
     if (!inDisplayMath && trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
@@ -139,10 +141,70 @@ export function scanLabels(md: string): CellAnalysis {
 
 
 export function scanCitations(markdown: string): string[] {
-  throw new Error('not implemented');
+  const keys: string[] = [];
+
+  // Remove HTML comments before line-by-line processing
+  const text = markdown.replace(/<!--[\s\S]*?-->/g, '');
+
+  const lines = text.split('\n');
+  let inFencedBlock = false;
+
+  for (const line of lines) {
+    if (/^(`{3,}|~{3,})/.test(line)) {
+      inFencedBlock = !inFencedBlock;
+      continue;
+    }
+    if (inFencedBlock) continue;
+
+    // Strip inline code before scanning
+    const stripped = line.replace(/`[^`]*`/g, '');
+
+    const rx = /\^([A-Za-z][A-Za-z0-9_]*)/g;
+    let m;
+    while ((m = rx.exec(stripped)) !== null) {
+      keys.push(m[1]);
+    }
+  }
+
+  return keys;
 }
 
 
 export function scanBibliographyDirectives(markdown: string): BibliographyDirective[] {
-  throw new Error('not implemented');
+  const directives: BibliographyDirective[] = [];
+
+  // Remove HTML comments before line-by-line processing
+  const text = markdown.replace(/<!--[\s\S]*?-->/g, '');
+
+  const lines = text.split('\n');
+  let inFencedBlock = false;
+  let inDirective = false;
+  let currentSrc: string | null = null;
+
+  for (const line of lines) {
+    if (/^(`{3,}|~{3,})/.test(line)) {
+      inFencedBlock = !inFencedBlock;
+      continue;
+    }
+    if (inFencedBlock) continue;
+
+    if (!inDirective) {
+      if (line.trim() === '::: bibliography') {
+        inDirective = true;
+        currentSrc = null;
+      }
+    } else {
+      if (line.trim() === ':::') {
+        directives.push({ src: currentSrc });
+        inDirective = false;
+      } else {
+        const srcMatch = line.match(/^src:\s*(.+)/);
+        if (srcMatch) {
+          currentSrc = srcMatch[1].trim();
+        }
+      }
+    }
+  }
+
+  return directives;
 }

@@ -235,6 +235,9 @@ docker-compose.override.yml
 
 refs/
 
+# generated test files
+junit.xml
+
 # generated extension
 jupyterlab_mdx/
 

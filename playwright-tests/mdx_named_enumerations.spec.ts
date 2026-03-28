@@ -120,6 +120,7 @@ test.describe('mdx named enumerations with multiple cells', () => {
 
     const renderedCells = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon');
     await expect(renderedCells.nth(0)).toContainText('(1)');
+    await expect(renderedCells.nth(0)).not.toContainText('[?]');
     await expect(renderedCells.nth(1)).toContainText('See 1.');
   });
 
@@ -209,7 +210,7 @@ test.describe('mdx named enumerations invalid fixtures', () => {
 
     const renderedCell = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon').first();
     await expect(renderedCell).toBeVisible();
-    await expect(renderedCell).toContainText(/eq|reserved|display math/i);
+    await expect(renderedCell).toContainText('⚠ misuse');
 
     await expect.poll(() =>
       consoleMessages.some(m => m.includes('ReservedEnumerationMisuseError'))
@@ -224,7 +225,7 @@ test.describe('mdx named enumerations invalid fixtures', () => {
 
     const renderedCell = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon').first();
     await expect(renderedCell).toBeVisible();
-    await expect(renderedCell).toContainText(/eq|reserved|display math/i);
+    await expect(renderedCell).toContainText('⚠ misuse');
 
     await expect.poll(() =>
       consoleMessages.some(m => m.includes('ReservedEnumerationMisuseError'))
@@ -239,7 +240,7 @@ test.describe('mdx named enumerations invalid fixtures', () => {
 
     const renderedCell = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon').first();
     await expect(renderedCell).toBeVisible();
-    await expect(renderedCell).toContainText(/eq|reserved|display math/i);
+    await expect(renderedCell).toContainText('⚠ misuse');
 
     await expect.poll(() =>
       consoleMessages.some(m => m.includes('ReservedEnumerationMisuseError'))
@@ -254,7 +255,7 @@ test.describe('mdx named enumerations invalid fixtures', () => {
 
     const renderedCell = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon').first();
     await expect(renderedCell).toBeVisible();
-    await expect(renderedCell).toContainText(/eq|reserved|display math/i);
+    await expect(renderedCell).toContainText('⚠ misuse');
 
     await expect.poll(() =>
       consoleMessages.some(m => m.includes('ReservedEnumerationMisuseError'))
@@ -269,7 +270,8 @@ test.describe('mdx named enumerations invalid fixtures', () => {
 
     const renderedCells = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon');
     await expect(renderedCells.nth(0)).toBeVisible();
-    await expect(renderedCells.nth(0)).toContainText(/eq|reserved|display math/i);
+    await expect(renderedCells.nth(0)).toContainText('⚠ misuse');
+    await expect(renderedCells.nth(1)).toContainText('⚠ unresolved');
 
     await expect.poll(() =>
       consoleMessages.some(m => m.includes('ReservedEnumerationMisuseError'))
@@ -284,7 +286,8 @@ test.describe('mdx named enumerations invalid fixtures', () => {
 
     const renderedCells = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon');
     await expect(renderedCells.nth(0)).toBeVisible();
-    await expect(renderedCells.nth(0)).toContainText(/eq|reserved|display math/i);
+    await expect(renderedCells.nth(0)).toContainText('⚠ misuse');
+    await expect(renderedCells.nth(1)).toContainText('⚠ unresolved');
 
     await expect.poll(() =>
       consoleMessages.some(m => m.includes('ReservedEnumerationMisuseError'))
@@ -296,7 +299,7 @@ test.describe('mdx named enumerations invalid fixtures', () => {
 
     const renderedCell = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon').first();
     await expect(renderedCell).toBeVisible();
-    await expect(renderedCell).toContainText('Figure 1 shows the first architecture.');
+    await expect(renderedCell).not.toContainText('Figure 1 shows the first architecture.');
     await expect(renderedCell).toContainText('⚠ duplicate');
   });
 
@@ -305,7 +308,7 @@ test.describe('mdx named enumerations invalid fixtures', () => {
 
     const renderedCell = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon').first();
     await expect(renderedCell).toBeVisible();
-    await expect(renderedCell).toContainText('(1)');
+    await expect(renderedCell).not.toContainText('(1)');  // both instances should have a duplicate warning.
     await expect(renderedCell).not.toContainText('((1))');
     await expect(renderedCell).toContainText('⚠ duplicate');
   });
@@ -318,7 +321,8 @@ test.describe('mdx named enumerations invalid fixtures', () => {
 
     const renderedCells = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon');
     await expect(renderedCells.nth(0)).toBeVisible();
-    await expect(renderedCells.nth(0)).toContainText('Figure 1 shows the first architecture.');
+    await expect(renderedCells.nth(0)).not.toContainText('Figure 1 shows the first architecture.');
+    await expect(renderedCells.nth(0)).toContainText('⚠ duplicate');
     await expect(renderedCells.nth(1)).toBeVisible();
     await expect(renderedCells.nth(1)).toContainText('⚠ duplicate');
 
@@ -335,8 +339,9 @@ test.describe('mdx named enumerations invalid fixtures', () => {
 
     const renderedCells = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon');
     await expect(renderedCells.nth(0)).toBeVisible();
-    await expect(renderedCells.nth(0)).toContainText('(1)');
+    await expect(renderedCells.nth(0)).not.toContainText('(1)');  // both instances should show duplicate.
     await expect(renderedCells.nth(0)).not.toContainText('((1))');
+    await expect(renderedCells.nth(0)).toContainText('⚠ duplicate');
     await expect(renderedCells.nth(1)).toBeVisible();
     await expect(renderedCells.nth(1)).toContainText('⚠ duplicate');
 
@@ -349,11 +354,13 @@ test.describe('mdx named enumerations invalid fixtures', () => {
     const consoleMessages: string[] = [];
     page.on('console', msg => consoleMessages.push(msg.text()));
 
-    await page.goto('/lab/tree/playwright-tests/fixtures/single_cell_duplicate_named_section_label.ipynb?reset');
+    await page.goto('/lab/tree/playwright-tests/fixtures/single_cell_enumeration_context_and_duplicate_error.ipynb?reset');
 
     const renderedCell = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon').first();
     await expect(renderedCell).toBeVisible();
     await expect(renderedCell).toContainText('fig:overview');
+    await expect(renderedCell).toContainText('⚠ misuse');
+    await expect(renderedCell).toContainText('⚠ duplicate');
 
     await expect.poll(() =>
       consoleMessages.some(m => m.includes('EnumerationContextError'))
@@ -364,12 +371,14 @@ test.describe('mdx named enumerations invalid fixtures', () => {
     const consoleMessages: string[] = [];
     page.on('console', msg => consoleMessages.push(msg.text()));
 
-    await page.goto('/lab/tree/playwright-tests/fixtures/multi_cell_duplicate_named_section_label.ipynb?reset');
+    await page.goto('/lab/tree/playwright-tests/fixtures/multi_cell_enumeration_context_and_duplicate_error.ipynb?reset');
 
     const renderedCells = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon');
     await expect(renderedCells.nth(0)).toBeVisible();
-    await expect(renderedCells.nth(0)).toContainText('fig:overview');
+    await expect(renderedCells.nth(0)).toContainText('⚠ misuse');
     await expect(renderedCells.nth(1)).toBeVisible();
+    await expect(renderedCells.nth(1)).toContainText('⚠ duplicate');
+
 
     await expect.poll(() =>
       consoleMessages.some(m => m.includes('EnumerationContextError'))

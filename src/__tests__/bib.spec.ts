@@ -309,7 +309,7 @@ describe('mdx bib / formatBibliographyEntry', () => {
 
     expect(entry).toBeDefined();
     expect(formatBibliographyEntry(entry!, 1)).toBe(
-      '[1] Leslie Lamport, “LaTeX: A Document Preparation System,” *Software: Practice and Experience*, 1994.'
+      '[1] Leslie Lamport, "LaTeX: A Document Preparation System," *Software: Practice and Experience*, 1994.'
     );
   });
 
@@ -319,7 +319,7 @@ describe('mdx bib / formatBibliographyEntry', () => {
 
     expect(entry).toBeDefined();
     expect(formatBibliographyEntry(entry!, 2)).toBe(
-      '[2] Donald E. Knuth, “Literate Programming,” *Proceedings of the ACM Symposium on Text Manipulation*, 1984.'
+      '[2] Donald E. Knuth, "Literate Programming," *Proceedings of the ACM Symposium on Text Manipulation*, 1984.'
     );
   });
 
@@ -329,7 +329,7 @@ describe('mdx bib / formatBibliographyEntry', () => {
 
     expect(entry).toBeDefined();
     expect(formatBibliographyEntry(entry!, 3)).toBe(
-      '[3] Alfred V. Aho and Monica S. Lam and Ravi Sethi and Jeffrey D. Ullman, “Compilers: Principles, Techniques, and Tools,” 2006.'
+      '[3] Alfred V. Aho and Monica S. Lam and Ravi Sethi and Jeffrey D. Ullman, "Compilers: Principles, Techniques, and Tools," 2006.'
     );
   });
 
@@ -345,7 +345,7 @@ describe('mdx bib / formatBibliographyEntry', () => {
     };
 
     expect(formatBibliographyEntry(entry, 7)).toBe(
-      '[7] Unknown, “Anonymous Work,” *Mystery Journal*, 2025.'
+      '[7] Unknown, "Anonymous Work," *Mystery Journal*, 2025.'
     );
   });
 
@@ -377,7 +377,7 @@ describe('mdx bib / formatBibliographyEntry', () => {
     };
 
     expect(formatBibliographyEntry(entry, 5)).toBe(
-      '[5] Jane Doe, “Untethered Work,” 2025.'
+      '[5] Jane Doe, "Untethered Work," 2025.'
     );
   });
 
@@ -393,7 +393,7 @@ describe('mdx bib / formatBibliographyEntry', () => {
     };
 
     expect(formatBibliographyEntry(entry, 6)).toBe(
-      '[6] Jane Doe, “Undated Work,” *Journal of Tests*.'
+      '[6] Jane Doe, "Undated Work," *Journal of Tests*.'
     );
   });
 });
@@ -407,9 +407,9 @@ describe('mdx bib / renderBibliographyMarkdown', () => {
 
     expect(renderBibliographyMarkdown(citationState, entries)).toBe(
       [
-        '[1] Leslie Lamport, “LaTeX: A Document Preparation System,” *Software: Practice and Experience*, 1994.',
-        '[2] Donald E. Knuth, “Literate Programming,” *The Computer Journal*, 1984.',
-        '[3] Alan M. Turing, “On Computable Numbers, with an Application to the Entscheidungsproblem,” *Proceedings of the London Mathematical Society*, 1936.'
+        '[1] Leslie Lamport, "LaTeX: A Document Preparation System," *Software: Practice and Experience*, 1994.',
+        '[2] Donald E. Knuth, "Literate Programming," *The Computer Journal*, 1984.',
+        '[3] Alan M. Turing, "On Computable Numbers, with an Application to the Entscheidungsproblem," *Proceedings of the London Mathematical Society*, 1936.'
       ].join('\n\n')
     );
   });
@@ -422,8 +422,8 @@ describe('mdx bib / renderBibliographyMarkdown', () => {
 
     expect(renderBibliographyMarkdown(citationState, entries)).toBe(
       [
-        '[1] Donald E. Knuth, “Literate Programming,” *The Computer Journal*, 1984.',
-        '[2] Leslie Lamport, “LaTeX: A Document Preparation System,” *Software: Practice and Experience*, 1994.'
+        '[1] Donald E. Knuth, "Literate Programming," *The Computer Journal*, 1984.',
+        '[2] Leslie Lamport, "LaTeX: A Document Preparation System," *Software: Practice and Experience*, 1994.'
       ].join('\n\n')
     );
   });
@@ -437,8 +437,8 @@ describe('mdx bib / renderBibliographyMarkdown', () => {
 
     expect(renderBibliographyMarkdown(citationState, entries)).toBe(
       [
-        '[1] Leslie Lamport, “LaTeX: A Document Preparation System,” *Software: Practice and Experience*, 1994.',
-        '[2] Donald E. Knuth, “Literate Programming,” *The Computer Journal*, 1984.'
+        '[1] Leslie Lamport, "LaTeX: A Document Preparation System," *Software: Practice and Experience*, 1994.',
+        '[2] Donald E. Knuth, "Literate Programming," *The Computer Journal*, 1984.'
       ].join('\n\n')
     );
   });
@@ -450,7 +450,7 @@ describe('mdx bib / renderBibliographyMarkdown', () => {
     const entries = parseBibFile(bibFixture('single_entry.bib'));
 
     expect(renderBibliographyMarkdown(citationState, entries)).toBe(
-      '[1] Leslie Lamport, “LaTeX: A Document Preparation System,” *Software: Practice and Experience*, 1994.'
+      '[1] Leslie Lamport, "LaTeX: A Document Preparation System," *Software: Practice and Experience*, 1994.'
     );
   });
 
@@ -480,9 +480,9 @@ describe('mdx bib / renderBibliographyMarkdown', () => {
 
     expect(renderBibliographyMarkdown(citationState, entries)).toBe(
       [
-        '[1] Leslie Lamport, “LaTeX: A Document Preparation System,” *Software: Practice and Experience*, 1994.',
-        '[2] Donald E. Knuth, “Literate Programming,” *Proceedings of the ACM Symposium on Text Manipulation*, 1984.',
-        '[3] Alfred V. Aho and Monica S. Lam and Ravi Sethi and Jeffrey D. Ullman, “Compilers: Principles, Techniques, and Tools,” 2006.'
+        '[1] Leslie Lamport, "LaTeX: A Document Preparation System," *Software: Practice and Experience*, 1994.',
+        '[2] Donald E. Knuth, "Literate Programming," *Proceedings of the ACM Symposium on Text Manipulation*, 1984.',
+        '[3] Alfred V. Aho and Monica S. Lam and Ravi Sethi and Jeffrey D. Ullman, "Compilers: Principles, Techniques, and Tools," 2006.'
       ].join('\n\n')
     );
   });

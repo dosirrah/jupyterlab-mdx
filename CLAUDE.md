@@ -194,10 +194,11 @@ Then:
 ### Formal rules
 
 Label:
-  @([A-Za-z][A-Za-z0-9_]*)
+    @([A-Za-z0-9][A-Za-z0-9_]*(?::[A-Za-z0-9][A-Za-z0-9_]*)?)
 
 Reference:
-  #([A-Za-z][A-Za-z0-9_])
+    #([A-Za-z0-9][A-Za-z0-9_]*(?::[A-Za-z0-9][A-Za-z0-9_]*)?)
+
 
 A reference must:
   - not be at the beginning of a line

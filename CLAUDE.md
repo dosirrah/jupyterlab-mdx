@@ -702,6 +702,49 @@ There are two test layers:
    - They should not be the main oracle for syntax semantics.
 
 
+## Error handling in `scanNotebook`
+
+`scanNotebook` must not stop processing when it encounters parse or
+labeling errors. It should continue scanning the full notebook,
+collect all recoverable errors, and log them rather than throwing
+exceptions.
+
+### Required behavior
+
+- Do not throw for recoverable scan-time problems such as duplicate labels or other malformed label/reference situations.
+- Report each error through an injected logger interface.
+- In browser/runtime use, the logger should write to the console.
+- In tests, the logger should be injectable so tests can assert that an error was reported.
+- `scanNotebook` should still return a complete notebook state for as much of the notebook as can be analyzed.
+
+### State returned from scanning
+
+The returned notebook state should include enough information to
+render warnings later. This should work similarly to how duplicates
+are tracked now.
+
+In particular:
+
+- labels or references that participated in an error should be recorded in returned state
+- duplicate labels should continue to be returned as duplicates
+- other scan-time problems should also be represented in returned state, likely as an `errors` or `issues` collection
+- this returned state becomes part of the global render-time state
+
+### Render-time goal
+
+Render-time transformation should use collected scan errors to
+annotate markdown output with visible warnings instead of failing
+early.
+
+Examples of existing or desired warning forms:
+
+- `⚠ unresolved: ${match}`
+- `⚠ duplicate: @${raw}`
+
+The guiding principle is: scan broadly, log errors, return structured
+error state, and let rendering surface warnings inline to the user.
+
+
 ## Test execution order
 
 When implementing or modifying features, do not start with Playwright tests.

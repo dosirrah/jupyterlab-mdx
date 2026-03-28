@@ -8,7 +8,7 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:8888'
   },
   webServer: {
-    command: 'docker compose -f docker-compose.dev.yml up',
+    command: 'npm run lab:start:dev',
     url: 'http://127.0.0.1:8888/lab',
     reuseExistingServer: true,
     timeout: 120_000

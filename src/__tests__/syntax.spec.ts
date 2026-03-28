@@ -281,6 +281,20 @@ Actual text here.
 `)
     ).toEqual([]);
   });
+  
+  it('does not recognize citations inside LaTeX equation block', () => {
+
+    // this block has ^t, which could be interpreted as a citation if
+    // it weren't in an equation block.
+    expect(
+      scanCitations(
+      `
+$$
+\int_{x=0}^t x^2 dx   @eq:foo
+$$
+`)
+    ).toEqual([]);
+  });
 
   it('recognizes citations outside comments when comments are present', () => {
     expect(

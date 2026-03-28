@@ -124,6 +124,18 @@ describe('mdx bib / scanNotebookCitations', () => {
     ]);
   });
 
+  it('ignores citations inside LaTeX equation blocks', () => {
+    const state = scanNotebookCitations([
+      `
+$$
+\int_{x=0}^t x^2 dx   @eq:foo
+$$
+`
+    ]);
+
+    expect(Array.from(state.citationNumbers.entries())).toEqual([]);
+  });
+
   it('ignores citations inside HTML comments when assigning numbers', () => {
     const state = scanNotebookCitations([
       `

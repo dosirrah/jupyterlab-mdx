@@ -2,12 +2,19 @@ import {
   scanNotebook,
   resolveReference,
   transformMarkdown,
-  DuplicateLabelError,
-  EnumerationContextError,
-  ReservedEnumerationMisuseError,
+  ScanLogger,
+  ScanIssue,
   SectionInfo,
   EnumerationInfo
 } from '../references';
+
+function makeTestLogger() {
+  const warnings: Array<{ message: string; issue: ScanIssue }> = [];
+  const logger: ScanLogger = {
+    warn(message: string, issue: ScanIssue) { warnings.push({ message, issue }); }
+  };
+  return { logger, warnings };
+}
 
 function sectionEntries(state: ReturnType<typeof scanNotebook>) {
   return state.sections.map(label => {
@@ -165,29 +172,28 @@ describe('mdx references / scanNotebook', () => {
     });
   });
 
-  it('rejects duplicate labels within the same named enumeration', () => {
-    expect(() =>
-      scanNotebook([
-        'Figure @fig:one shows the architecture.',
-        'Figure @fig:one shows another architecture.'
-      ])
-    ).toThrow(DuplicateLabelError);
+  it('records a duplicate-label issue for duplicate named enumeration labels', () => {
+    const state = scanNotebook([
+      'Figure @fig:one shows the architecture.',
+      'Figure @fig:one shows another architecture.'
+    ]);
+    expect(state.issues.some(i => i.kind === 'duplicate-label' && i.label === 'fig:one')).toBe(true);
+    expect(state.duplicates.has('fig:one')).toBe(true);
   });
 
-  it('rejects eq labels outside display math blocks', () => {
-    expect(() =>
-      scanNotebook([
-        'This is not allowed: @eq:bad outside math.'
-      ])
-    ).toThrow(ReservedEnumerationMisuseError);
+  it('records a reserved-enumeration-misuse issue for eq labels outside display math', () => {
+    const state = scanNotebook([
+      'This is not allowed: @eq:bad outside math.'
+    ]);
+    expect(state.issues.some(i => i.kind === 'reserved-enumeration-misuse')).toBe(true);
+    expect(state.labels.has('eq:bad')).toBe(false);
   });
 
-  it('rejects eq labels in headings', () => {
-    expect(() =>
-      scanNotebook([
-        '## @eq:bad Methods'
-      ])
-    ).toThrow(ReservedEnumerationMisuseError);
+  it('records a reserved-enumeration-misuse issue for eq labels in headings', () => {
+    const state = scanNotebook([
+      '## @eq:bad Methods'
+    ]);
+    expect(state.issues.some(i => i.kind === 'reserved-enumeration-misuse')).toBe(true);
   });
 
   it('accepts eq labels inside $$ blocks', () => {
@@ -708,68 +714,55 @@ describe('mdx references / scanNotebook', () => {
   });
 });
 
-describe('mdx references / DuplicateLabelError', () => {
-  it('throws when two explicit body labels normalize to the same canonical label', () => {
-    expect(() =>
-      scanNotebook([
-        '@foo something',
-        '@Foo something else'
-      ])
-    ).toThrow(DuplicateLabelError);
+describe('mdx references / duplicate and misuse handling', () => {
+  it('records a duplicate-label issue for two explicit body labels that normalize to the same canonical label', () => {
+    const { logger, warnings } = makeTestLogger();
+    const state = scanNotebook(['@foo something', '@Foo something else'], logger);
+    expect(state.issues.some(i => i.kind === 'duplicate-label' && i.label === 'foo')).toBe(true);
+    expect(state.duplicates.has('foo')).toBe(true);
+    expect(warnings.length).toBeGreaterThan(0);
   });
 
-  it('throws when two implicit section labels normalize to the same canonical label', () => {
-    expect(() =>
-      scanNotebook([
-        '## About Dolphins',
-        '## About_Dolphins'
-      ])
-    ).toThrow(DuplicateLabelError);
+  it('continues scanning after a duplicate and registers subsequent labels', () => {
+    const state = scanNotebook([
+      '@foo something',
+      '@Foo duplicate',
+      '@bar valid label after duplicate'
+    ]);
+    expect(state.issues.some(i => i.kind === 'duplicate-label')).toBe(true);
+    expect(state.labels.has('bar')).toBe(true);
+    expect(state.labels.get('bar')!.number).toBe('2');
   });
 
-  it('throws when an explicit section label collides with an implicit section label', () => {
-    expect(() =>
-      scanNotebook([
-        '## About Dolphins',
-        '## @aboutdolphins Another Section'
-      ])
-    ).toThrow(DuplicateLabelError);
+  it('records a duplicate-label issue for two implicit section labels that normalize the same', () => {
+    const state = scanNotebook(['## About Dolphins', '## About_Dolphins']);
+    expect(state.issues.some(i => i.kind === 'duplicate-label' && i.label === 'aboutdolphins')).toBe(true);
+    expect(state.duplicates.has('aboutdolphins')).toBe(true);
   });
 
-  it('throws when an explicit body label collides with an implicit section label', () => {
-    expect(() =>
-      scanNotebook([
-        '## About Dolphins',
-        '@aboutdolphins body label'
-      ])
-    ).toThrow(DuplicateLabelError);
+  it('records a duplicate-label issue when an explicit section label collides with an implicit one', () => {
+    const state = scanNotebook(['## About Dolphins', '## @aboutdolphins Another Section']);
+    expect(state.issues.some(i => i.kind === 'duplicate-label')).toBe(true);
   });
 
-  it('throws when two explicit section labels normalize to the same canonical label', () => {
-    expect(() =>
-      scanNotebook([
-        '## @QSelect Quick Select',
-        '## @qselect Another Section'
-      ])
-    ).toThrow(DuplicateLabelError);
+  it('records a duplicate-label issue when an explicit body label collides with an implicit section label', () => {
+    const state = scanNotebook(['## About Dolphins', '@aboutdolphins body label']);
+    expect(state.issues.some(i => i.kind === 'duplicate-label')).toBe(true);
   });
 
-  it('throws when an explicit section label collides with an explicit body label', () => {
-    expect(() =>
-      scanNotebook([
-        '## @foo First Section',
-        '@foo body label'
-      ])
-    ).toThrow(DuplicateLabelError);
+  it('records a duplicate-label issue when two explicit section labels normalize the same', () => {
+    const state = scanNotebook(['## @QSelect Quick Select', '## @qselect Another Section']);
+    expect(state.issues.some(i => i.kind === 'duplicate-label')).toBe(true);
   });
 
-  it('throws when two sections with the same title would produce the same implicit label', () => {
-    expect(() =>
-      scanNotebook([
-        '### Analysis',
-        '### Analysis'
-      ])
-    ).toThrow(DuplicateLabelError);
+  it('records a duplicate-label issue when an explicit section label collides with an explicit body label', () => {
+    const state = scanNotebook(['## @foo First Section', '@foo body label']);
+    expect(state.issues.some(i => i.kind === 'duplicate-label')).toBe(true);
+  });
+
+  it('records a duplicate-label issue when two sections with the same title produce the same implicit label', () => {
+    const state = scanNotebook(['### Analysis', '### Analysis']);
+    expect(state.issues.some(i => i.kind === 'duplicate-label')).toBe(true);
   });
 
   it('allows repeated section titles when they have distinct explicit labels', () => {
@@ -778,6 +771,7 @@ describe('mdx references / DuplicateLabelError', () => {
       '### @monsteranalysis Analysis'
     ]);
 
+    expect(state.issues).toHaveLength(0);
     expect(sectionEntries(state).map(s => ({
       title: s.title,
       number: s.number,
@@ -789,39 +783,52 @@ describe('mdx references / DuplicateLabelError', () => {
     ]);
   });
 
-  it('throws when only one of two otherwise-duplicate sections has an explicit label', () => {
-    expect(() =>
-      scanNotebook([
-        '### @gkanalysis Analysis',
-        '### Analysis'
-      ])
-    ).toThrow(DuplicateLabelError);
+  it('records a duplicate-label issue when only one of two duplicate sections has an explicit label', () => {
+    const state = scanNotebook(['### @gkanalysis Analysis', '### Analysis']);
+    expect(state.issues.some(i => i.kind === 'duplicate-label')).toBe(true);
   });
 
-  it('does not throw when labels are distinct after normalization', () => {
-    expect(() =>
-      scanNotebook([
-        '## About Dolphins',
-        '## About Sharks',
-        '@foo body label'
-      ])
-    ).not.toThrow();
+  it('produces no issues when labels are distinct after normalization', () => {
+    const state = scanNotebook(['## About Dolphins', '## About Sharks', '@foo body label']);
+    expect(state.issues).toHaveLength(0);
   });
 
-  it('does not throw when labels are distinct because they are in different enumerations', () => {
-    expect(() =>
-      scanNotebook([
-        'Step @foo',
-        'Figure @fig:foo',
-        '$$\nx = y + z   @eq:foo\n$$'
-      ])
-    ).not.toThrow();
+  it('produces no issues when labels are distinct across enumerations', () => {
+    const state = scanNotebook([
+      'Step @foo',
+      'Figure @fig:foo',
+      '$$\nx = y + z   @eq:foo\n$$'
+    ]);
+    expect(state.issues).toHaveLength(0);
   });
 
-  it('throws an exception when attempting to use named enumerations in section headings', () => {
-    expect(() =>
-      scanNotebook(['## @fig:overview Overview'])
-    ).toThrow(EnumerationContextError);
+  it('records an enumeration-context issue for named enumerations in section headings', () => {
+    const state = scanNotebook(['## @fig:overview Overview']);
+    expect(state.issues.some(i => i.kind === 'enumeration-context')).toBe(true);
+  });
+
+  it('still numbers the section when a heading has a named-enumeration label error', () => {
+    const state = scanNotebook(['## @fig:overview Overview', '## Next Section']);
+    expect(state.issues.some(i => i.kind === 'enumeration-context')).toBe(true);
+    expect(state.sections.length).toBe(2);
+    const next = state.labels.get('nextsection');
+    expect(next).toBeDefined();
+    expect(next!.number).toBe('2');
+  });
+
+  it('records a reserved-enumeration-misuse issue for eq labels in body text outside display math', () => {
+    const state = scanNotebook(['This is not allowed: @eq:bad outside math.', '@foo valid']);
+    expect(state.issues.some(i => i.kind === 'reserved-enumeration-misuse')).toBe(true);
+    expect(state.labels.has('eq:bad')).toBe(false);
+    expect(state.labels.has('foo')).toBe(true);
+  });
+
+  it('logger receives warn calls for each issue', () => {
+    const { logger, warnings } = makeTestLogger();
+    scanNotebook(['@dup first', '@dup second', '@eq:bad outside math'], logger);
+    expect(warnings.length).toBe(2);
+    expect(warnings.some(w => w.issue.kind === 'duplicate-label')).toBe(true);
+    expect(warnings.some(w => w.issue.kind === 'reserved-enumeration-misuse')).toBe(true);
   });
 });
 

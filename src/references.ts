@@ -18,50 +18,26 @@ export interface EnumerationInfo {
 
 export type LabelInfo = SectionInfo | EnumerationInfo;
 
+export interface ScanIssue {
+  kind: 'duplicate-label' | 'reserved-enumeration-misuse' | 'enumeration-context';
+  message: string;
+  label: string;
+}
+
+export interface ScanLogger {
+  warn(message: string, issue: ScanIssue): void;
+}
+
+const noopLogger: ScanLogger = { warn() {} };
+
 export interface NotebookState {
   labels: Map<string, LabelInfo>;
   sections: string[];                      // ordered canonical labels of sections
   enumerations: Map<string, string[]>;     // ordered canonical labels per enumeration
   duplicates: Set<string>;                 // canonical labels that appeared more than once
-}
-
-export class DuplicateLabelError extends Error {
-  label: string;
-  partialState?: NotebookState;
-
-  constructor(label: string) {
-    super(`Duplicate canonical label: ${label}`);
-    this.name = 'DuplicateLabelError';
-    this.label = label;
-  }
-}
-
-export class EnumerationContextError extends Error {
-  enumerationName: string;
-  label: string;
-  context: string;
-
-  constructor(enumerationName: string, label: string, context: string) {
-    super(
-      `Label @${enumerationName}:${label} is not allowed in ${context}`
-    );
-    this.name = 'EnumerationContextError';
-    this.enumerationName = enumerationName;
-    this.label = label;
-    this.context = context;
-  }
-}
-
-export class ReservedEnumerationMisuseError extends Error {
-  enumerationName: string;
-  label: string;
-
-  constructor(enumerationName: string, label: string, message?: string) {
-    super(message ?? `Reserved enumeration ${enumerationName} misused: ${label}`);
-    this.name = 'ReservedEnumerationMisuseError';
-    this.enumerationName = enumerationName;
-    this.label = label;
-  }
+  misused: Set<string>;                    // canonical labels misused in wrong context (e.g. @eq:foo in body text)
+  primarySectionCells: Map<string, number>; // canonical section label → markdown-cell index of the primary registration
+  issues: ScanIssue[];                     // all scan-time problems encountered
 }
 
 interface StackEntry { level: number; counter: number; }
@@ -70,16 +46,18 @@ interface StackEntry { level: number; counter: number; }
  * First pass over the notebook.
  *
  * `cells` contains only markdown cells, in notebook order.
- * Throws `DuplicateLabelError` if two labels normalize to the same canonical label.
- * Throws `ReservedEnumerationMisuseError` if an eq label appears outside a display math block,
- * or if a named-enum label of the form @eq:x appears in a section heading.
- * Throws `EnumerationContextError` if any other named-enum label appears in a section heading.
+ * Scans all cells regardless of errors. Recoverable problems are logged via `logger`
+ * and recorded in the returned `issues` array rather than thrown as exceptions.
  */
-export function scanNotebook(cells: string[]): NotebookState {
+export function scanNotebook(cells: string[], logger: ScanLogger = noopLogger): NotebookState {
   const labels = new Map<string, LabelInfo>();
   const sections: string[] = [];
   const enumerations = new Map<string, string[]>();
   const duplicates = new Set<string>();
+  const misused = new Set<string>();
+  const primarySectionCells = new Map<string, number>();
+  const issues: ScanIssue[] = [];
+  let mdCellIndex = 0;
   const stack: StackEntry[] = [];
   const reservedTitles = new Set<string>();
 
@@ -107,39 +85,52 @@ export function scanNotebook(cells: string[]): NotebookState {
     return sectionNumber();
   }
 
-  function registerLabel(canonicalLabel: string, info: LabelInfo, state: NotebookState): void {
-    if (labels.has(canonicalLabel)) {
-      duplicates.add(canonicalLabel);
-      const err = new DuplicateLabelError(canonicalLabel);
-      err.partialState = state;
-      throw err;
-    }
-    labels.set(canonicalLabel, info);
+  function recordIssue(issue: ScanIssue): void {
+    issues.push(issue);
+    logger.warn(issue.message, issue);
   }
 
-  function addToEnumeration(name: string, label: string, info: EnumerationInfo, state: NotebookState): void {
+  // Returns true if the label was registered, false if it was a duplicate.
+  function registerLabel(canonicalLabel: string, info: LabelInfo): boolean {
+    if (labels.has(canonicalLabel)) {
+      duplicates.add(canonicalLabel);
+      recordIssue({
+        kind: 'duplicate-label',
+        message: `Duplicate canonical label: ${canonicalLabel}`,
+        label: canonicalLabel,
+      });
+      return false;
+    }
+    labels.set(canonicalLabel, info);
+    return true;
+  }
+
+  function addToEnumeration(name: string, label: string, info: EnumerationInfo): void {
     if (!enumerations.has(name)) enumerations.set(name, []);
     const enumList = enumerations.get(name)!;
     const enumNumber = String(enumList.length + 1);
     (info as any).number = enumNumber;
-    registerLabel(label, info, state);
-    enumList.push(label);
+    if (registerLabel(label, info)) {
+      enumList.push(label);
+    }
   }
 
-  for (let ci = 0; ci < cells.length; ci++) {
-    const cellSource = cells[ci];
+  for (const cellSource of cells) {
+    const analysis = scanLabels(cellSource);
 
-    let analysis;
-    try {
-      analysis = scanLabels(cellSource);
-    } catch (err) {
-      if (err instanceof HeadingLabelError) {
-        if (err.enumerationName.toLowerCase() === 'eq') {
-          throw new ReservedEnumerationMisuseError(err.enumerationName, err.member);
-        }
-        throw new EnumerationContextError(err.enumerationName, err.member, 'section heading');
-      }
-      throw err;
+    // Report any named-enum-in-heading errors recovered by scanLabels.
+    // Register the label anyway so that subsequent occurrences in body text are detected as duplicates.
+    for (const err of analysis.headingErrors) {
+      const isEq = err.enumerationName.toLowerCase() === 'eq';
+      const canonicalLabel = `${normalize(err.enumerationName)}:${normalize(err.member)}`;
+      recordIssue({
+        kind: isEq ? 'reserved-enumeration-misuse' : 'enumeration-context',
+        message: err.message,
+        label: canonicalLabel,
+      });
+      const enumName = normalize(err.enumerationName);
+      const info: EnumerationInfo = { kind: 'enumeration', name: enumName, number: '' };
+      addToEnumeration(enumName, canonicalLabel, info);
     }
 
     // Track which labels came from headings in this cell
@@ -162,25 +153,26 @@ export function scanNotebook(cells: string[]): NotebookState {
         isExplicit: !!heading.explicitLabel,
       };
 
-      const state: NotebookState = { labels, sections, enumerations, duplicates };
-
       if (!heading.explicitLabel && reservedTitles.has(normalizedTitle)) {
         duplicates.add(normalizedTitle);
-        const err = new DuplicateLabelError(normalizedTitle);
-        err.partialState = state;
-        throw err;
+        recordIssue({
+          kind: 'duplicate-label',
+          message: `Duplicate implicit section label: ${normalizedTitle}`,
+          label: normalizedTitle,
+        });
+        continue;
       }
 
       reservedTitles.add(normalizedTitle);
-      registerLabel(canonicalLabel, info, state);
-      sections.push(canonicalLabel);
+      if (registerLabel(canonicalLabel, info)) {
+        sections.push(canonicalLabel);
+        primarySectionCells.set(canonicalLabel, mdCellIndex);
+      }
     }
 
     // Body labels
     for (const label of analysis.labelsDefined) {
       if (headingLabelSet.has(label)) continue;
-
-      const state: NotebookState = { labels, sections, enumerations, duplicates };
 
       if (label.includes(':')) {
         const colonIdx = label.indexOf(':');
@@ -188,26 +180,33 @@ export function scanNotebook(cells: string[]): NotebookState {
         const member = label.slice(colonIdx + 1);
 
         if (name === 'eq') {
-          throw new ReservedEnumerationMisuseError('eq', member);
+          recordIssue({
+            kind: 'reserved-enumeration-misuse',
+            message: `Reserved enumeration eq misused: ${member}`,
+            label,
+          });
+          misused.add(label);
+          continue;
         }
 
         const info: EnumerationInfo = { kind: 'enumeration', name, number: '' };
-        addToEnumeration(name, label, info, state);
+        addToEnumeration(name, label, info);
       } else {
         const info: EnumerationInfo = { kind: 'enumeration', name: 'global', number: '' };
-        addToEnumeration('global', label, info, state);
+        addToEnumeration('global', label, info);
       }
     }
 
     // Equation labels from display math
     for (const label of analysis.eqLabels) {
-      const state: NotebookState = { labels, sections, enumerations, duplicates };
       const info: EnumerationInfo = { kind: 'enumeration', name: 'eq', number: '' };
-      addToEnumeration('eq', label, info, state);
+      addToEnumeration('eq', label, info);
     }
+
+    mdCellIndex++;
   }
 
-  return { labels, sections, enumerations, duplicates };
+  return { labels, sections, enumerations, duplicates, misused, primarySectionCells, issues };
 }
 
 /**
@@ -268,6 +267,7 @@ function transformBodyText(text: string, state: NotebookState): string {
     const canonical = raw.includes(':')
       ? normalize(raw.slice(0, raw.indexOf(':'))) + ':' + normalize(raw.slice(raw.indexOf(':') + 1))
       : normalize(raw);
+    if (state.misused.has(canonical)) return `⚠ misuse: @${raw}`;
     if (state.duplicates.has(canonical)) return `⚠ duplicate: @${raw}`;
     const info = state.labels.get(canonical);
     return info ? info.number : match;
@@ -286,8 +286,11 @@ function transformBodyText(text: string, state: NotebookState): string {
 
 /**
  * Render-time transform for a single markdown cell.
+ * `mdCellIndex` is the 0-based index of this cell among markdown cells in the notebook;
+ * it is used to distinguish the primary heading occurrence from secondaries when a
+ * section label is duplicated.
  */
-export function transformMarkdown(md: string, state: NotebookState): string {
+export function transformMarkdown(md: string, state: NotebookState, mdCellIndex: number = 0): string {
   const lines = md.split('\n');
   const result: string[] = [];
   let inFencedBlock = false;
@@ -401,15 +404,40 @@ export function transformMarkdown(md: string, state: NotebookState): string {
         continue;
       }
 
+      // Named-enum label in heading (invalid: @name:member Title) — render warning
+      const namedEnumMatch = headingText.match(/^@(\w+):(\w+)\s*(.*)/);
+      if (namedEnumMatch) {
+        const rawName = namedEnumMatch[1];
+        const rawMember = namedEnumMatch[2];
+        const title = namedEnumMatch[3].trim() || headingText;
+        result.push(`${hashes} ${title}`);
+        result.push('');
+        result.push(`⚠ misuse: @${rawName}:${rawMember}`);
+        continue;
+      }
+
       const labelMatch = headingText.match(/^@(\w+)\s+(.*)/);
       const rawLabel = labelMatch ? labelMatch[1] : null;
       const title = labelMatch ? labelMatch[2].trim() : headingText;
       const canonicalLabel = rawLabel ? normalize(rawLabel) : normalize(headingText);
 
       if (state.duplicates.has(canonicalLabel)) {
-        result.push(`${hashes} ${title}`);
-        result.push('');
-        result.push(`⚠ duplicate: @${rawLabel ?? canonicalLabel}`);
+        const isPrimary = state.primarySectionCells.get(canonicalLabel) === mdCellIndex;
+        if (isPrimary) {
+          // Primary occurrence: render numbered, no warning
+          const info = state.labels.get(canonicalLabel);
+          if (info && info.kind === 'section') {
+            const sep = headingSeparator(info.number);
+            result.push(`${hashes} ${info.number}${sep}${title}`);
+          } else {
+            result.push(`${hashes} ${title}`);
+          }
+        } else {
+          // Secondary occurrence: show duplicate warning
+          result.push(`${hashes} ${title}`);
+          result.push('');
+          result.push(`⚠ duplicate: @${rawLabel ?? canonicalLabel}`);
+        }
       } else {
         const info = state.labels.get(canonicalLabel);
         if (info && info.kind === 'section') {

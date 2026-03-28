@@ -6,9 +6,8 @@ import {
   scanNotebook,
   transformMarkdown,
   NotebookState,
-  DuplicateLabelError,
-  ReservedEnumerationMisuseError,
-  EnumerationContextError
+  ScanLogger,
+  ScanIssue
 } from './references';
 import {
   CitationState,
@@ -24,11 +23,23 @@ const stateMap = new WeakMap<NotebookPanel, NotebookState>();
 const citationStateMap = new WeakMap<NotebookPanel, CitationState>();
 const bibEntriesMap = new WeakMap<NotebookPanel, Map<string, BibliographyEntry>>();
 
+const consoleLogger: ScanLogger = {
+  warn(message: string, issue: ScanIssue) {
+    const tag = issue.kind === 'duplicate-label' ? 'DuplicateLabelError'
+      : issue.kind === 'reserved-enumeration-misuse' ? 'ReservedEnumerationMisuseError'
+      : 'EnumerationContextError';
+    console.warn('[mdx]', tag, message, issue);
+  }
+};
+
 const emptyState: NotebookState = {
   labels: new Map(),
   sections: [],
   enumerations: new Map(),
-  duplicates: new Set()
+  duplicates: new Set(),
+  misused: new Set(),
+  primarySectionCells: new Map(),
+  issues: []
 };
 
 const emptyCitationState: CitationState = {
@@ -43,24 +54,9 @@ function getMarkdownSources(panel: NotebookPanel): string[] {
 
 function doScan(panel: NotebookPanel): NotebookState {
   const sources = getMarkdownSources(panel);
-  try {
-    const state = scanNotebook(sources);
-    stateMap.set(panel, state);
-    return state;
-  } catch (err) {
-    if (err instanceof DuplicateLabelError) {
-      console.error(err);
-      const state = err.partialState ?? emptyState;
-      stateMap.set(panel, state);
-      return state;
-    }
-    if (err instanceof ReservedEnumerationMisuseError || err instanceof EnumerationContextError) {
-      console.error(err);
-      stateMap.set(panel, emptyState);
-      return emptyState;
-    }
-    throw err;
-  }
+  const state = scanNotebook(sources, consoleLogger);
+  stateMap.set(panel, state);
+  return state;
 }
 
 async function loadBibFile(bibPath: string): Promise<string | null> {
@@ -125,7 +121,7 @@ function patchCellRenderer(cell: MarkdownCell, panel: NotebookPanel, mdCellIndex
     const citState = citationStateMap.get(panel) ?? emptyCitationState;
     const entries = bibEntriesMap.get(panel) ?? new Map<string, BibliographyEntry>();
     const src = (model.data?.[mimeType] as string) ?? '';
-    let xformed = transformMarkdown(src, state);
+    let xformed = transformMarkdown(src, state, mdCellIndex);
     xformed = transformCitationRefs(xformed, citState, entries);
     xformed = transformBibliographyDirective(xformed, citState, entries);
     return origRenderModel({

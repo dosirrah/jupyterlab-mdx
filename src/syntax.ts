@@ -6,9 +6,10 @@ export interface HeadingInfo {
 }
 
 export interface CellAnalysis {
-  labelsDefined: string[];   // canonical labels from body text: global as 'foo', named as 'fig:arch'
-  eqLabels: string[];        // eq:xxx labels found inside display math blocks
-  headings: HeadingInfo[];   // headings in order of appearance
+  labelsDefined: string[];        // canonical labels from body text: global as 'foo', named as 'fig:arch'
+  eqLabels: string[];             // eq:xxx labels found inside display math blocks
+  headings: HeadingInfo[];        // headings in order of appearance
+  headingErrors: HeadingLabelError[]; // named-enum labels found in headings (invalid but recoverable)
 }
 
 export class HeadingLabelError extends Error {
@@ -43,6 +44,7 @@ export function scanLabels(md: string): CellAnalysis {
   const labelsDefined: string[] = [];
   const eqLabels: string[] = [];
   const headings: HeadingInfo[] = [];
+  const headingErrors: HeadingLabelError[] = [];
 
   // Remove HTML comments (may be multiline)
   const text = md.replace(/<!--[\s\S]*?-->/g, '');
@@ -98,21 +100,23 @@ export function scanLabels(md: string): CellAnalysis {
       const level = headingMatch[1].length;
       const headingText = headingMatch[2].trim();
 
-      // Named-enum label at start of heading: ## @name:member Title — invalid, throw immediately
-      const namedMatch = headingText.match(/^@(\w+):(\w+)/);
+      // Named-enum label at start of heading: ## @name:member Title — invalid, recover by stripping it
+      const namedMatch = headingText.match(/^@(\w+):(\w+)\s*(.*)/);
       if (namedMatch) {
-        throw new HeadingLabelError(namedMatch[1], namedMatch[2]);
-      }
-
-      // Global explicit label at start of heading: ## @label Title text
-      const labelMatch = headingText.match(/^@(\w+)\s+(.*)/);
-      if (labelMatch) {
-        const explicitLabel = normalize(labelMatch[1]);
-        const title = labelMatch[2].trim();
-        labelsDefined.push(explicitLabel);
-        headings.push({ level, title, explicitLabel });
+        headingErrors.push(new HeadingLabelError(namedMatch[1], namedMatch[2]));
+        const title = namedMatch[3].trim() || headingText;
+        headings.push({ level, title });
       } else {
-        headings.push({ level, title: headingText });
+        // Global explicit label at start of heading: ## @label Title text
+        const labelMatch = headingText.match(/^@(\w+)\s+(.*)/);
+        if (labelMatch) {
+          const explicitLabel = normalize(labelMatch[1]);
+          const title = labelMatch[2].trim();
+          labelsDefined.push(explicitLabel);
+          headings.push({ level, title, explicitLabel });
+        } else {
+          headings.push({ level, title: headingText });
+        }
       }
     } else {
       // Body text: strip inline code, then collect @labels
@@ -136,7 +140,7 @@ export function scanLabels(md: string): CellAnalysis {
     }
   }
 
-  return { labelsDefined, eqLabels, headings };
+  return { labelsDefined, eqLabels, headings, headingErrors };
 }
 
 
@@ -148,6 +152,7 @@ export function scanCitations(markdown: string): string[] {
 
   const lines = text.split('\n');
   let inFencedBlock = false;
+  let inDisplayMath = false;
 
   for (const line of lines) {
     if (/^(`{3,}|~{3,})/.test(line)) {
@@ -155,6 +160,22 @@ export function scanCitations(markdown: string): string[] {
       continue;
     }
     if (inFencedBlock) continue;
+
+    const trimmed = line.trim();
+
+    // Track display math — citations inside math are not citations
+    if (trimmed === '$$') { inDisplayMath = !inDisplayMath; continue; }
+    if (trimmed === '\\[') { inDisplayMath = true; continue; }
+    if (trimmed === '\\]') { inDisplayMath = false; continue; }
+    if (/^\\begin\{(align|align\*|equation|equation\*|gather|gather\*|multline|multline\*|flalign|flalign\*|eqnarray|eqnarray\*)\}/.test(trimmed)) { inDisplayMath = true; continue; }
+    if (/^\\end\{(align|align\*|equation|equation\*|gather|gather\*|multline|multline\*|flalign|flalign\*|eqnarray|eqnarray\*)\}/.test(trimmed)) { inDisplayMath = false; continue; }
+    if (inDisplayMath) continue;
+
+    // Skip single-line $$ blocks entirely
+    if (!inDisplayMath && trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) continue;
+    // Skip lines opening or closing $$ with inline content
+    if (!inDisplayMath && trimmed.startsWith('$$') && trimmed.length > 2) { inDisplayMath = true; continue; }
+    if (inDisplayMath && trimmed.endsWith('$$') && !trimmed.startsWith('$$')) { inDisplayMath = false; continue; }
 
     // Strip inline code before scanning
     const stripped = line.replace(/`[^`]*`/g, '');

@@ -174,6 +174,7 @@ export function transformCitationRefs(
 ): string {
   const lines = markdown.split('\n');
   let inFencedBlock = false;
+  let inDisplayMath = false;
   const result: string[] = [];
 
   for (const line of lines) {
@@ -186,6 +187,22 @@ export function transformCitationRefs(
       result.push(line);
       continue;
     }
+
+    // Track display math to avoid treating superscripts (e.g. ^t) as citations
+    const trimmed = line.trim();
+    if (trimmed === '$$') { inDisplayMath = !inDisplayMath; result.push(line); continue; }
+    if (trimmed === '\\[') { inDisplayMath = true; result.push(line); continue; }
+    if (trimmed === '\\]') { inDisplayMath = false; result.push(line); continue; }
+    if (/^\\begin\{(align|align\*|equation|equation\*|gather|gather\*|multline|multline\*|flalign|flalign\*|eqnarray|eqnarray\*)\}/.test(trimmed)) { inDisplayMath = true; result.push(line); continue; }
+    if (/^\\end\{(align|align\*|equation|equation\*|gather|gather\*|multline|multline\*|flalign|flalign\*|eqnarray|eqnarray\*)\}/.test(trimmed)) { inDisplayMath = false; result.push(line); continue; }
+    if (inDisplayMath) { result.push(line); continue; }
+
+    // Skip single-line $$ blocks
+    if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) { result.push(line); continue; }
+    // Opening $$ with inline content
+    if (trimmed.startsWith('$$') && trimmed.length > 2) { inDisplayMath = true; result.push(line); continue; }
+    // Closing $$ with inline content
+    if (inDisplayMath && trimmed.endsWith('$$') && !trimmed.startsWith('$$')) { inDisplayMath = false; result.push(line); continue; }
 
     // Replace inline code spans and ^key tokens together so inline code is skipped
     const transformed = line.replace(

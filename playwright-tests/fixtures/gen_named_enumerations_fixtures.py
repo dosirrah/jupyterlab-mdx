@@ -270,14 +270,14 @@ fixtures = {
     # are allowed in headings.
     # ----------------------------------------------------------------
 
-    "single_cell_duplicate_named_section_label.ipynb": [
+    "single_cell_enumeration_context_and_duplicate_error.ipynb": [
         md_cell(
             "## @fig:overview Overview\n\n"
             "Figure @fig:overview shows the system.\n"
         )
     ],
 
-    "multi_cell_duplicate_named_section_label.ipynb": [
+    "multi_cell_enumeration_context_and_duplicate_error.ipynb": [
         md_cell("## @fig:overview Overview\n"),
         md_cell("Figure @fig:overview shows the system.\n"),
     ],

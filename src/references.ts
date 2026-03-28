@@ -128,9 +128,14 @@ export function scanNotebook(cells: string[], logger: ScanLogger = noopLogger): 
         message: err.message,
         label: canonicalLabel,
       });
-      const enumName = normalize(err.enumerationName);
-      const info: EnumerationInfo = { kind: 'enumeration', name: enumName, number: '' };
-      addToEnumeration(enumName, canonicalLabel, info);
+      if (isEq) {
+        // eq labels in headings are reserved-misuse: don't register them so references are unresolved.
+        misused.add(canonicalLabel);
+      } else {
+        const enumName = normalize(err.enumerationName);
+        const info: EnumerationInfo = { kind: 'enumeration', name: enumName, number: '' };
+        addToEnumeration(enumName, canonicalLabel, info);
+      }
     }
 
     // Track which labels came from headings in this cell

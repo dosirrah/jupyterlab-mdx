@@ -10,16 +10,29 @@ import {
   ReservedEnumerationMisuseError,
   EnumerationContextError
 } from './references';
+import {
+  CitationState,
+  BibliographyEntry,
+  scanNotebookCitations,
+  parseBibFile,
+  transformCitationRefs,
+  transformBibliographyDirective
+} from './bib';
+import { scanBibliographyDirectives } from './syntax';
 
 const stateMap = new WeakMap<NotebookPanel, NotebookState>();
+const citationStateMap = new WeakMap<NotebookPanel, CitationState>();
+const bibEntriesMap = new WeakMap<NotebookPanel, Map<string, BibliographyEntry>>();
 
 const emptyState: NotebookState = {
   labels: new Map(),
   sections: [],
   enumerations: new Map(),
-  duplicates: new Set(),
-  duplicateSecondaries: new Map(),
-  primaryCellIndices: new Map()
+  duplicates: new Set()
+};
+
+const emptyCitationState: CitationState = {
+  citationNumbers: new Map()
 };
 
 function getMarkdownSources(panel: NotebookPanel): string[] {
@@ -50,6 +63,49 @@ function doScan(panel: NotebookPanel): NotebookState {
   }
 }
 
+async function loadBibFile(bibPath: string): Promise<string | null> {
+  try {
+    const encodedPath = bibPath.split('/').map(encodeURIComponent).join('/');
+    const resp = await fetch(`/api/contents/${encodedPath}?content=1&format=text`);
+    if (!resp.ok) return null;
+    const data = await resp.json() as { content?: unknown };
+    return typeof data.content === 'string' ? data.content : null;
+  } catch {
+    return null;
+  }
+}
+
+async function doCitationScan(panel: NotebookPanel): Promise<void> {
+  const sources = getMarkdownSources(panel);
+
+  const citState = scanNotebookCitations(sources);
+  citationStateMap.set(panel, citState);
+
+  // Resolve notebook directory for relative bib file paths
+  const localPath = panel.context.localPath;
+  const slashIdx = localPath.lastIndexOf('/');
+  const notebookDir = slashIdx >= 0 ? localPath.slice(0, slashIdx) : '';
+
+  const allEntries = new Map<string, BibliographyEntry>();
+
+  for (const src of sources) {
+    const directives = scanBibliographyDirectives(src);
+    for (const directive of directives) {
+      if (!directive.src) continue;
+      const bibPath = notebookDir ? `${notebookDir}/${directive.src}` : directive.src;
+      const bibContent = await loadBibFile(bibPath);
+      if (bibContent) {
+        const entries = parseBibFile(bibContent);
+        for (const [key, entry] of entries) {
+          if (!allEntries.has(key)) allEntries.set(key, entry);
+        }
+      }
+    }
+  }
+
+  bibEntriesMap.set(panel, allEntries);
+}
+
 // Patch a cell's renderer so every renderModel call—ours or JupyterLab's—
 // always applies the current notebook-wide transformation.  The closure
 // captures `panel` so it can look up the latest state at call time.
@@ -66,8 +122,12 @@ function patchCellRenderer(cell: MarkdownCell, panel: NotebookPanel, mdCellIndex
 
   cell.renderer.renderModel = async (model: any) => {
     const state = stateMap.get(panel) ?? emptyState;
+    const citState = citationStateMap.get(panel) ?? emptyCitationState;
+    const entries = bibEntriesMap.get(panel) ?? new Map<string, BibliographyEntry>();
     const src = (model.data?.[mimeType] as string) ?? '';
-    const xformed = transformMarkdown(src, state, mdCellIndex);
+    let xformed = transformMarkdown(src, state);
+    xformed = transformCitationRefs(xformed, citState, entries);
+    xformed = transformBibliographyDirective(xformed, citState, entries);
     return origRenderModel({
       data: { [mimeType]: xformed },
       metadata: model.metadata ?? {},
@@ -127,6 +187,7 @@ const plugin: JupyterFrontEndPlugin<void> = {
       tracker.forEach(p => { if (p.content === notebook) panel = p; });
       if (panel) {
         doScan(panel);
+        await doCitationScan(panel);
         rerenderMarkdown(panel);
       }
       return result;
@@ -146,6 +207,7 @@ const plugin: JupyterFrontEndPlugin<void> = {
 
       await panel.context.ready;
       doScan(panel);
+      await doCitationScan(panel);
       rerenderMarkdown(panel);
     });
   }

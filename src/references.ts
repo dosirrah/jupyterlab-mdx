@@ -23,8 +23,6 @@ export interface NotebookState {
   sections: string[];                      // ordered canonical labels of sections
   enumerations: Map<string, string[]>;     // ordered canonical labels per enumeration
   duplicates: Set<string>;                 // canonical labels that appeared more than once
-  duplicateSecondaries: Map<string, number[]>;
-  primaryCellIndices: Map<string, number>; // canonical label → cell index of primary occurrence
 }
 
 export class DuplicateLabelError extends Error {
@@ -82,11 +80,8 @@ export function scanNotebook(cells: string[]): NotebookState {
   const sections: string[] = [];
   const enumerations = new Map<string, string[]>();
   const duplicates = new Set<string>();
-  const duplicateSecondaries = new Map<string, number[]>();
-  const primaryCellIndices = new Map<string, number>();
   const stack: StackEntry[] = [];
   const reservedTitles = new Set<string>();
-  let currentCellIndex = 0;
 
   function sectionNumber(): string {
     return stack.map(e => e.counter).join('.');
@@ -115,15 +110,11 @@ export function scanNotebook(cells: string[]): NotebookState {
   function registerLabel(canonicalLabel: string, info: LabelInfo, state: NotebookState): void {
     if (labels.has(canonicalLabel)) {
       duplicates.add(canonicalLabel);
-      const arr = duplicateSecondaries.get(canonicalLabel) ?? [];
-      arr.push(currentCellIndex);
-      duplicateSecondaries.set(canonicalLabel, arr);
       const err = new DuplicateLabelError(canonicalLabel);
       err.partialState = state;
       throw err;
     }
     labels.set(canonicalLabel, info);
-    primaryCellIndices.set(canonicalLabel, currentCellIndex);
   }
 
   function addToEnumeration(name: string, label: string, info: EnumerationInfo, state: NotebookState): void {
@@ -136,7 +127,6 @@ export function scanNotebook(cells: string[]): NotebookState {
   }
 
   for (let ci = 0; ci < cells.length; ci++) {
-    currentCellIndex = ci;
     const cellSource = cells[ci];
 
     let analysis;
@@ -172,13 +162,10 @@ export function scanNotebook(cells: string[]): NotebookState {
         isExplicit: !!heading.explicitLabel,
       };
 
-      const state: NotebookState = { labels, sections, enumerations, duplicates, duplicateSecondaries, primaryCellIndices };
+      const state: NotebookState = { labels, sections, enumerations, duplicates };
 
       if (!heading.explicitLabel && reservedTitles.has(normalizedTitle)) {
         duplicates.add(normalizedTitle);
-        const arr = duplicateSecondaries.get(normalizedTitle) ?? [];
-        arr.push(currentCellIndex);
-        duplicateSecondaries.set(normalizedTitle, arr);
         const err = new DuplicateLabelError(normalizedTitle);
         err.partialState = state;
         throw err;
@@ -193,7 +180,7 @@ export function scanNotebook(cells: string[]): NotebookState {
     for (const label of analysis.labelsDefined) {
       if (headingLabelSet.has(label)) continue;
 
-      const state: NotebookState = { labels, sections, enumerations, duplicates, duplicateSecondaries, primaryCellIndices };
+      const state: NotebookState = { labels, sections, enumerations, duplicates };
 
       if (label.includes(':')) {
         const colonIdx = label.indexOf(':');
@@ -214,13 +201,13 @@ export function scanNotebook(cells: string[]): NotebookState {
 
     // Equation labels from display math
     for (const label of analysis.eqLabels) {
-      const state: NotebookState = { labels, sections, enumerations, duplicates, duplicateSecondaries, primaryCellIndices };
+      const state: NotebookState = { labels, sections, enumerations, duplicates };
       const info: EnumerationInfo = { kind: 'enumeration', name: 'eq', number: '' };
       addToEnumeration('eq', label, info, state);
     }
   }
 
-  return { labels, sections, enumerations, duplicates, duplicateSecondaries, primaryCellIndices };
+  return { labels, sections, enumerations, duplicates };
 }
 
 /**
@@ -275,23 +262,13 @@ function transformActiveParts(line: string, fn: (text: string) => string): strin
   return parts.join('');
 }
 
-function transformBodyText(text: string, state: NotebookState, cellIndex?: number, cellOccurrences?: Map<string, number>): string {
+function transformBodyText(text: string, state: NotebookState): string {
   // Replace @label (including @name:member) with its number
   let result = text.replace(/@(\w+(?::\w+)?)/g, (match, raw) => {
     const canonical = raw.includes(':')
       ? normalize(raw.slice(0, raw.indexOf(':'))) + ':' + normalize(raw.slice(raw.indexOf(':') + 1))
       : normalize(raw);
-    let isSecondary: boolean;
-    if (typeof cellIndex === 'number' && cellOccurrences) {
-      const count = (cellOccurrences.get(canonical) ?? 0) + 1;
-      cellOccurrences.set(canonical, count);
-      const primCell = state.primaryCellIndices?.get(canonical);
-      const inSecondaries = (state.duplicateSecondaries?.get(canonical) ?? []).includes(cellIndex);
-      isSecondary = inSecondaries && (primCell !== cellIndex || count > 1);
-    } else {
-      isSecondary = state.duplicates.has(canonical);
-    }
-    if (isSecondary) return `⚠ duplicate: @${raw}`;
+    if (state.duplicates.has(canonical)) return `⚠ duplicate: @${raw}`;
     const info = state.labels.get(canonical);
     return info ? info.number : match;
   });
@@ -309,18 +286,14 @@ function transformBodyText(text: string, state: NotebookState, cellIndex?: numbe
 
 /**
  * Render-time transform for a single markdown cell.
- * `cellIndex` is the markdown-cell index (0-based) within the notebook.
- * When provided, duplicate warnings are shown only for secondary occurrences;
- * the primary (first) occurrence is numbered normally.
  */
-export function transformMarkdown(md: string, state: NotebookState, cellIndex?: number): string {
+export function transformMarkdown(md: string, state: NotebookState): string {
   const lines = md.split('\n');
   const result: string[] = [];
   let inFencedBlock = false;
   let inHtmlComment = false;
   let inDisplayMath = false;
   let pendingEqDuplicates: string[] = [];
-  const cellOccurrences = new Map<string, number>();
 
   for (const line of lines) {
     // HTML comment tracking
@@ -353,17 +326,7 @@ export function transformMarkdown(md: string, state: NotebookState, cellIndex?: 
     const replaceEqLabels = (s: string): string =>
       s.replace(/@eq:(\w+)/g, (match, member) => {
         const canonical = 'eq:' + normalize(member);
-        let isSecondary: boolean;
-        if (typeof cellIndex === 'number') {
-          const count = (cellOccurrences.get(canonical) ?? 0) + 1;
-          cellOccurrences.set(canonical, count);
-          const primCell = state.primaryCellIndices?.get(canonical);
-          const inSecondaries = (state.duplicateSecondaries?.get(canonical) ?? []).includes(cellIndex);
-          isSecondary = inSecondaries && (primCell !== cellIndex || count > 1);
-        } else {
-          isSecondary = state.duplicates.has(canonical);
-        }
-        if (isSecondary) { pendingEqDuplicates.push(`⚠ duplicate: @eq:${member}`); return ''; }
+        if (state.duplicates.has(canonical)) { pendingEqDuplicates.push(`⚠ duplicate: @eq:${member}`); return ''; }
         const info = state.labels.get(canonical);
         return info ? `\\tag{${info.number}}` : match;
       });
@@ -383,6 +346,14 @@ export function transformMarkdown(md: string, state: NotebookState, cellIndex?: 
       continue;
     }
     if (trimmed === '\\[') { inDisplayMath = true; result.push(line.replace('\\[', '$$')); continue; }
+    if (/^\\begin\{(align|align\*|equation|equation\*|gather|gather\*|multline|multline\*|flalign|flalign\*|eqnarray|eqnarray\*)\}/.test(trimmed)) { inDisplayMath = true; result.push(line); continue; }
+    if (/^\\end\{(align|align\*|equation|equation\*|gather|gather\*|multline|multline\*|flalign|flalign\*|eqnarray|eqnarray\*)\}/.test(trimmed)) {
+      inDisplayMath = false;
+      result.push(line);
+      for (const dup of pendingEqDuplicates) result.push(dup);
+      pendingEqDuplicates = [];
+      continue;
+    }
     if (trimmed === '\\]') {
       inDisplayMath = false;
       result.push(line.replace('\\]', '$$'));
@@ -435,12 +406,7 @@ export function transformMarkdown(md: string, state: NotebookState, cellIndex?: 
       const title = labelMatch ? labelMatch[2].trim() : headingText;
       const canonicalLabel = rawLabel ? normalize(rawLabel) : normalize(headingText);
 
-      const isSecondary =
-        typeof cellIndex === 'number'
-          ? (state.duplicateSecondaries?.get(canonicalLabel) ?? []).includes(cellIndex)
-          : state.duplicates.has(canonicalLabel);
-
-      if (isSecondary) {
+      if (state.duplicates.has(canonicalLabel)) {
         result.push(`${hashes} ${title}`);
         result.push('');
         result.push(`⚠ duplicate: @${rawLabel ?? canonicalLabel}`);
@@ -458,7 +424,7 @@ export function transformMarkdown(md: string, state: NotebookState, cellIndex?: 
     }
 
     // Body text
-    result.push(transformActiveParts(line, text => transformBodyText(text, state, cellIndex, cellOccurrences)));
+    result.push(transformActiveParts(line, text => transformBodyText(text, state)));
   }
 
   return result.join('\n');

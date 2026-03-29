@@ -38,7 +38,6 @@ const emptyState: NotebookState = {
   enumerations: new Map(),
   duplicates: new Set(),
   misused: new Set(),
-  primarySectionCells: new Map(),
   issues: []
 };
 

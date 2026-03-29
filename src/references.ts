@@ -36,7 +36,6 @@ export interface NotebookState {
   enumerations: Map<string, string[]>;     // ordered canonical labels per enumeration
   duplicates: Set<string>;                 // canonical labels that appeared more than once
   misused: Set<string>;                    // canonical labels misused in wrong context (e.g. @eq:foo in body text)
-  primarySectionCells: Map<string, number>; // canonical section label → markdown-cell index of the primary registration
   issues: ScanIssue[];                     // all scan-time problems encountered
 }
 
@@ -55,7 +54,6 @@ export function scanNotebook(cells: string[], logger: ScanLogger = noopLogger): 
   const enumerations = new Map<string, string[]>();
   const duplicates = new Set<string>();
   const misused = new Set<string>();
-  const primarySectionCells = new Map<string, number>();
   const issues: ScanIssue[] = [];
   let mdCellIndex = 0;
   const stack: StackEntry[] = [];
@@ -171,7 +169,6 @@ export function scanNotebook(cells: string[], logger: ScanLogger = noopLogger): 
       reservedTitles.add(normalizedTitle);
       if (registerLabel(canonicalLabel, info)) {
         sections.push(canonicalLabel);
-        primarySectionCells.set(canonicalLabel, mdCellIndex);
       }
     }
 
@@ -211,7 +208,7 @@ export function scanNotebook(cells: string[], logger: ScanLogger = noopLogger): 
     mdCellIndex++;
   }
 
-  return { labels, sections, enumerations, duplicates, misused, primarySectionCells, issues };
+  return { labels, sections, enumerations, duplicates, misused, issues };
 }
 
 /**
@@ -253,13 +250,26 @@ function headingSeparator(number: string): string {
 
 function transformActiveParts(line: string, fn: (text: string) => string): string {
   const parts: string[] = [];
-  const codePattern = /`[^`]*`/g;
+  // Skip backtick code spans and $...$ inline math (but not $$)
+  const skipPattern = /`[^`]*`|\$(?!\$)[^$]+\$/g;
   let lastEnd = 0;
   let m: RegExpExecArray | null;
 
-  while ((m = codePattern.exec(line)) !== null) {
+  while ((m = skipPattern.exec(line)) !== null) {
     parts.push(fn(line.slice(lastEnd, m.index)));
-    parts.push(m[0]);
+    const span = m[0];
+    if (span.startsWith('$')) {
+      // Inline math: strip any @eq:... misuse labels and render warnings outside the math
+      const misuses: string[] = [];
+      const cleaned = span.replace(/@eq:(\w+)/g, (_, member) => {
+        misuses.push(`⚠ misuse: @eq:${member}`);
+        return '';
+      });
+      parts.push(cleaned);
+      if (misuses.length > 0) parts.push(' ' + misuses.join(' '));
+    } else {
+      parts.push(span);
+    }
     lastEnd = m.index + m[0].length;
   }
   parts.push(fn(line.slice(lastEnd)));
@@ -427,22 +437,10 @@ export function transformMarkdown(md: string, state: NotebookState, mdCellIndex:
       const canonicalLabel = rawLabel ? normalize(rawLabel) : normalize(headingText);
 
       if (state.duplicates.has(canonicalLabel)) {
-        const isPrimary = state.primarySectionCells.get(canonicalLabel) === mdCellIndex;
-        if (isPrimary) {
-          // Primary occurrence: render numbered, no warning
-          const info = state.labels.get(canonicalLabel);
-          if (info && info.kind === 'section') {
-            const sep = headingSeparator(info.number);
-            result.push(`${hashes} ${info.number}${sep}${title}`);
-          } else {
-            result.push(`${hashes} ${title}`);
-          }
-        } else {
-          // Secondary occurrence: show duplicate warning
-          result.push(`${hashes} ${title}`);
-          result.push('');
-          result.push(`⚠ duplicate: @${rawLabel ?? canonicalLabel}`);
-        }
+        // Every occurrence of a duplicate label gets a warning — we don't know which is the singleton.
+        result.push(`${hashes} ${title}`);
+        result.push('');
+        result.push(`⚠ duplicate: @${rawLabel ?? canonicalLabel}`);
       } else {
         const info = state.labels.get(canonicalLabel);
         if (info && info.kind === 'section') {

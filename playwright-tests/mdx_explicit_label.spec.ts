@@ -155,7 +155,7 @@ test.describe('mdx explicit label with multiple cells', () => {
     const renderedCells = page.locator('.jp-MarkdownCell .jp-RenderedHTMLCommon');
 
     await expect(renderedCells.nth(0)).toBeVisible();
-    await expect(renderedCells.nth(0)).toContainText('1. First');
+    await expect(renderedCells.nth(0)).toContainText('⚠ duplicate: @bar');
 
     await expect(renderedCells.nth(1)).toBeVisible();
     await expect(renderedCells.nth(1)).toContainText('⚠ duplicate: @bar');

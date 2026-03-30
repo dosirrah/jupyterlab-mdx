@@ -5,11 +5,11 @@ export default defineConfig({
   timeout: 30_000,
   workers: 1,
   use: {
-    baseURL: 'http://127.0.0.1:8888'
+    baseURL: 'http://127.0.0.1:19999'
   },
   webServer: {
     command: 'npm run lab:start:dev',
-    url: 'http://127.0.0.1:8888/lab',
+    url: 'http://127.0.0.1:19999/lab',
     reuseExistingServer: true,
     timeout: 120_000
   }

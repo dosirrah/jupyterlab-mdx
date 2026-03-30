@@ -685,7 +685,164 @@ immediate visual consistency.
 - Bibliography logic resides in `bib.ts`
 - Rendering integrates both citation and reference transforms at display time
 
+## Hyperlinking cross-references and citations
 
+Rendered references and citations should become hyperlinks.
+Hyperlinks from hash tag referencdes should link to the appropriate
+label or section.  Citations should link to the appropriate entry
+in the bibliography.  The HTML markup for hyperlinks and anchors
+should ONLY be added when rendering the markdown.
+
+However, do **not** implement hyperlinking by blindly injecting raw HTML into
+markdown source text. That approach can corrupt markdown or produce incorrect
+rendering when a label or reference appears inside syntax regions that should be
+treated as literal or otherwise protected content.
+
+### Safe placement rules
+
+- Hyperlinks should be applied where it is unlikely to interfere with
+  rendering markdown.
+
+- Anchors should use the explicit or canonical names that are used for
+  labels, but for named enumerations, some browsers migth take issue
+  with a colon appearing in an anchor or hyperlink.  In the hyperlink
+  and anchor, replace the colon in a named enumeration with a dash.
+  For example, @fig:foo would appear as fig-foo in an anchor.
+
+- A blank line should appear between an anchor and the Mardown that contains
+  a label.
+  
+- For math blocks, place hyperlink anchors **immediately before the math block**
+  rather than inside it.
+
+  Example:
+  
+  Instead of modifying:
+  $$
+  E = mc^2   @eq:energy
+  $$
+  
+  Prefer:
+  
+  <a id="eq-energy"></a>
+  
+  $$
+  E = mc^2   \tag{1}
+  $$
+
+- Anchors should be placed in the line ABOVE a heading.
+
+```
+## Introduction
+```
+
+during rendering becomes
+
+```
+<a id="introduction"></a>
+
+1. Introduction
+```
+
+- Anchors should placed in the line above a paragraph containing a label.
+
+```
+Figure @fig:foo displays the shape of the warp field bubble in a practical low-energy configuration.
+```
+
+would transform during rendering to
+
+```
+
+<a id="fig-foo"></a>
+
+Figure 1 displays the shape of the warp field bubble in a practical low-energy configuration.
+```
+
+- Explicit labels are used as the anchor.  For example if the section below is the second
+section the jupyter notebook,
+
+```
+## @boo The Greatness of Boo
+```
+
+would transform during rendering to
+
+```
+
+<a id="boo"></a>
+
+## 2. The Greatness of Boo
+```
+
+If there is more than one label in a paragraph, the anchors may appear
+consecutively above the paragraph in the order that the labels
+appeared in the paragraph.
+
+```
+In the Age of Arlis (@age), the drunk Arlis (@arlis) learned how to control minds, and like
+Asimov's Mule, became Emperor of the World only to die at a young age by accidentally
+stumbling off the balcony to his palace bedroom.
+```
+
+becomes
+
+```
+
+<a id="age"></a>
+<a id="arlis"></a>
+
+In the Age of Arlis (1), the drunk Arlis (2) learned how to control minds, and like
+Asimov's Mule, became Emperor of the World only to die at a young age by accidentally
+stumbling off the balcony to his palace bedroom.
+```
+
+Hash tags also must be updated to include hyperlinks to the appropirate anchor.
+In the markdown cell containing a heading, might appear as
+
+```
+## Introduction
+```
+
+This is transformed during rendering to
+
+```
+<a id="introduction"></a>                                                                                            
+                                                                                                                       
+1. Introduction</h
+```
+                                                                                                                       
+In the cell containing the reference See #introduction, as markdown it appear as
+
+```
+See #introduction
+```
+
+which is transformed during rendering to 
+
+```
+See <a href="#introduction">1</a>.
+```
+
+### Forbidden contexts for HTML injection
+
+Do not inject hyperlinks or anchors inside:
+- inline code spans
+- fenced code blocks
+- HTML comments
+- raw HTML regions or attributes
+- LaTeX math content (inline or block)
+- any other markdown sublanguage or protected environment
+
+### Implementation guidance
+
+- Treat math environments similarly to code blocks: they are structurally opaque.
+- Use syntax-aware parsing or tokenization rather than regex-based substitution.
+- If a label is associated with math, emit the anchor immediately before the
+  math block during rendering rather than rewriting the math itself.
+- If safety is uncertain, render the reference without a hyperlink rather than
+  risking malformed markdown or broken rendering.
+  
 ## Test oracle
 
 There are two test layers:

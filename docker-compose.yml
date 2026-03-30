@@ -61,7 +61,7 @@ services:
       dockerfile: Dockerfile
     image: jupyterlab-mdx:latest
     ports:
-      - "8888:8888"
+      - "19999:8888"
     user: jovyan
     volumes:
       - ${R}:/home/jovyan/repo

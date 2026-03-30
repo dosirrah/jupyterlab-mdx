@@ -1029,7 +1029,7 @@ describe('mdx references / transformMarkdown', () => {
       '## About Dolphins'
     ]);
 
-    expect(transformMarkdown('## About Dolphins', state)).toBe('## 1. About Dolphins');
+    expect(transformMarkdown('## About Dolphins', state)).toBe('\n<a id="aboutdolphins"></a>\n\n## 1. About Dolphins');
   });
 
   it('numbers an explicitly labelled section heading the same way as an implicit one', () => {
@@ -1037,7 +1037,7 @@ describe('mdx references / transformMarkdown', () => {
       '## @qselect Quick Select'
     ]);
 
-    expect(transformMarkdown('## @qselect Quick Select', state)).toBe('## 1. Quick Select');
+    expect(transformMarkdown('## @qselect Quick Select', state)).toBe('\n<a id="qselect"></a>\n\n## 1. Quick Select');
   });
 
   it('numbers a single global-enumeration label', () => {
@@ -1045,7 +1045,7 @@ describe('mdx references / transformMarkdown', () => {
       'Step @foo. Add green eggs.'
     ]);
 
-    expect(transformMarkdown('Step @foo. Add green eggs.', state)).toBe('Step 1. Add green eggs.');
+    expect(transformMarkdown('Step @foo. Add green eggs.', state)).toBe('\n<a id="foo"></a>\n\nStep 1. Add green eggs.');
   });
 
   it('numbers a named-enumeration label using its own enumeration', () => {
@@ -1054,8 +1054,8 @@ describe('mdx references / transformMarkdown', () => {
       'Figure @fig:pipeline shows the pipeline.'
     ]);
 
-    expect(transformMarkdown('Figure @fig:arch shows the system.', state)).toBe('Figure 1 shows the system.');
-    expect(transformMarkdown('Figure @fig:pipeline shows the pipeline.', state)).toBe('Figure 2 shows the pipeline.');
+    expect(transformMarkdown('Figure @fig:arch shows the system.', state)).toBe('\n<a id="fig-arch"></a>\n\nFigure 1 shows the system.');
+    expect(transformMarkdown('Figure @fig:pipeline shows the pipeline.', state)).toBe('\n<a id="fig-pipeline"></a>\n\nFigure 2 shows the pipeline.');
   });
 
   it('numbers multiple global-enumeration labels in one cell', () => {
@@ -1066,7 +1066,13 @@ Step @bar. Add ham.
     const state = scanNotebook([md]);
 
     expect(transformMarkdown(md, state)).toBe(`
+
+<a id="foo"></a>
+
 Step 1. Add green eggs.
+
+<a id="bar"></a>
+
 Step 2. Add ham.
 `);
   });
@@ -1081,9 +1087,21 @@ Step 2. Add ham.
     const state = scanNotebook(cells);
 
     expect(transformMarkdown(cells[0], state)).toBe(`
+
+<a id="firstsection"></a>
+
 ## 1. First Section
+
+<a id="firstsubsection"></a>
+
 ### 1.1 First Subsection
+
+<a id="secondsection"></a>
+
 ## 2. Second Section
+
+<a id="secondsubsection"></a>
+
 ### 2.1 Second Subsection
 `);
   });
@@ -1096,7 +1114,13 @@ Step 2. Add ham.
     const state = scanNotebook(cells);
 
     expect(transformMarkdown(cells[0], state)).toBe(`
+
+<a id="second"></a>
+
 ## 1. Second
+
+<a id="deepsection"></a>
+
 #### 1.1 Deep Section
 `);
   });
@@ -1106,8 +1130,8 @@ Step 2. Add ham.
       '## About Dolphins'
     ]);
 
-    expect(transformMarkdown('See #about.', state)).toBe('See 1.');
-    expect(transformMarkdown('See #aboutdol for details.', state)).toBe('See 1 for details.');
+    expect(transformMarkdown('See #about.', state)).toBe('See [1](#aboutdolphins).');
+    expect(transformMarkdown('See #aboutdol for details.', state)).toBe('See [1](#aboutdolphins) for details.');
   });
 
   it('resolves an explicit section reference by exact label', () => {
@@ -1115,7 +1139,7 @@ Step 2. Add ham.
       '## @qselect Quick Select'
     ]);
 
-    expect(transformMarkdown('See #qselect.', state)).toBe('See 1.');
+    expect(transformMarkdown('See #qselect.', state)).toBe('See [1](#qselect).');
   });
 
   it('resolves an explicit global-enumeration reference by exact label', () => {
@@ -1123,7 +1147,7 @@ Step 2. Add ham.
       'Step @foo. Add green eggs.'
     ]);
 
-    expect(transformMarkdown('See #foo.', state)).toBe('See 1.');
+    expect(transformMarkdown('See #foo.', state)).toBe('See [1](#foo).');
   });
 
   it('resolves a named-enumeration reference by exact label', () => {
@@ -1131,7 +1155,7 @@ Step 2. Add ham.
       'Figure @fig:arch shows the system.'
     ]);
 
-    expect(transformMarkdown('See #fig:arch.', state)).toBe('See 1.');
+    expect(transformMarkdown('See #fig:arch.', state)).toBe('See [1](#fig-arch).');
   });
 
   it('does not use implicit title matching for explicitly labelled sections', () => {
@@ -1149,7 +1173,7 @@ Step 2. Add ham.
       '@about label in body text'
     ]);
 
-    expect(transformMarkdown('See #about.', state)).toBe('See 1.');
+    expect(transformMarkdown('See #about.', state)).toBe('See [1](#about).');
   });
 
   it('renders unresolved references visibly', () => {
@@ -1175,9 +1199,9 @@ Step 2. Add ham.
       '## Second Section'
     ]);
 
-    expect(transformMarkdown('See #first.', state)).toBe('See 1.');
-    expect(transformMarkdown('See #subsection.', state)).toBe('See 1.1.');
-    expect(transformMarkdown('See #second.', state)).toBe('See 2.');
+    expect(transformMarkdown('See #first.', state)).toBe('See [1](#firstsection).');
+    expect(transformMarkdown('See #subsection.', state)).toBe('See [1.1](#subsection).');
+    expect(transformMarkdown('See #second.', state)).toBe('See [2](#secondsection).');
   });
 
   it('numbers sections globally regardless of how markdown is split across cells', () => {
@@ -1195,11 +1219,11 @@ Step 2. Add ham.
       '### Second.A'
     ]);
 
-    expect(transformMarkdown('See #first.', state1)).toBe('See 1.');
-    expect(transformMarkdown('See #seconda.', state1)).toBe('See 2.1.');
+    expect(transformMarkdown('See #first.', state1)).toBe('See [1](#first).');
+    expect(transformMarkdown('See #seconda.', state1)).toBe('See [2.1](#seconda).');
 
-    expect(transformMarkdown('See #first.', state2)).toBe('See 1.');
-    expect(transformMarkdown('See #seconda.', state2)).toBe('See 2.1.');
+    expect(transformMarkdown('See #first.', state2)).toBe('See [1](#first).');
+    expect(transformMarkdown('See #seconda.', state2)).toBe('See [2.1](#seconda).');
   });
 
   it('removes explicit labels from headings when rendering', () => {
@@ -1207,7 +1231,7 @@ Step 2. Add ham.
       '### @impl Implementation'
     ]);
 
-    expect(transformMarkdown('### @impl Implementation', state)).toBe('### 1. Implementation');
+    expect(transformMarkdown('### @impl Implementation', state)).toBe('\n<a id="impl"></a>\n\n### 1. Implementation');
   });
 
   it('does not recognize references inside inline code', () => {
@@ -1251,6 +1275,9 @@ See #about
 \`\`\`
 ## Not a heading
 \`\`\`
+
+<a id="realheading"></a>
+
 ## 1. Real Heading
 `);
   });
@@ -1267,7 +1294,7 @@ See #about.
 
     expect(transformMarkdown(md, state)).toBe(`
 <!-- See #about -->
-See 1.
+See [1](#aboutdolphins).
 `);
   });
 
@@ -1276,7 +1303,7 @@ See 1.
       '#### Deep Section'
     ]);
 
-    expect(transformMarkdown('#### Deep Section', state)).toBe('#### 1. Deep Section');
+    expect(transformMarkdown('#### Deep Section', state)).toBe('\n<a id="deepsection"></a>\n\n#### 1. Deep Section');
   });
 
   it('renders equation labels as parenthesized equation tags', () => {
@@ -1288,6 +1315,9 @@ $$
     const state = scanNotebook([md]);
 
     expect(transformMarkdown(md, state)).toBe(`
+
+<a id="eq-foo"></a>
+
 $$
 \\int_{x=0}^t x^2 dx     \\tag{1}
 $$
@@ -1303,6 +1333,41 @@ $$
 `
     ]);
 
-    expect(transformMarkdown('See #eq:foo.', state)).toBe('See 1.');
+    expect(transformMarkdown('See #eq:foo.', state)).toBe('See [1](#eq-foo).');
+  });
+
+  it('inserts consecutive anchors above a paragraph with multiple labels', () => {
+    const md = 'In the Age of Arlis (@age), the drunk Arlis (@arlis) learned.';
+    const state = scanNotebook([md]);
+    expect(transformMarkdown(md, state)).toBe(
+      '\n<a id="age"></a>\n<a id="arlis"></a>\n\nIn the Age of Arlis (1), the drunk Arlis (2) learned.'
+    );
+  });
+
+  it('does not inject anchor for a duplicate label', () => {
+    const state = scanNotebook(['@foo first', '@foo second']);
+    const result = transformMarkdown('@foo first', state);
+    expect(result).toContain('⚠ duplicate: @foo');
+    expect(result).not.toContain('<a id=');
+  });
+
+  it('does not inject anchor for a misused eq label in body text', () => {
+    const state = scanNotebook(['Text with @eq:bad outside math.']);
+    const result = transformMarkdown('Text with @eq:bad outside math.', state);
+    expect(result).toContain('⚠ misuse');
+    expect(result).not.toContain('<a id=');
+  });
+
+  it('does not inject hyperlink for an unresolved reference', () => {
+    const state = scanNotebook([]);
+    const result = transformMarkdown('See #ghost.', state);
+    expect(result).toBe('See ⚠ unresolved: #ghost.');
+    expect(result).not.toMatch(/\[.*\]\(#/);
+  });
+
+  it('does not inject anchors inside inline math', () => {
+    const state = scanNotebook(['$x = @foo$']);
+    const result = transformMarkdown('$x = @foo$', state);
+    expect(result).not.toContain('<a id=');
   });
 });

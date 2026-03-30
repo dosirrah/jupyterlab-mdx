@@ -248,6 +248,74 @@ function headingSeparator(number: string): string {
   return number.includes('.') ? ' ' : '. ';
 }
 
+function toAnchorId(canonical: string): string {
+  return canonical.replace(':', '-');
+}
+
+// Collect anchor IDs for all valid labels in a body-text line,
+// skipping backtick spans and inline math.
+function collectLineAnchors(line: string, state: NotebookState): string[] {
+  const ids: string[] = [];
+  const skipPattern = /`[^`]*`|\$(?!\$)[^$]+\$/g;
+  let lastEnd = 0;
+  let m: RegExpExecArray | null;
+  const segs: string[] = [];
+
+  while ((m = skipPattern.exec(line)) !== null) {
+    segs.push(line.slice(lastEnd, m.index));
+    lastEnd = m.index + m[0].length;
+  }
+  segs.push(line.slice(lastEnd));
+
+  for (const seg of segs) {
+    const pat = /@(\w+(?::\w+)?)/g;
+    let lm: RegExpExecArray | null;
+    while ((lm = pat.exec(seg)) !== null) {
+      const raw = lm[1];
+      const canonical = raw.includes(':')
+        ? normalize(raw.slice(0, raw.indexOf(':'))) + ':' + normalize(raw.slice(raw.indexOf(':') + 1))
+        : normalize(raw);
+      if (!state.misused.has(canonical) && !state.duplicates.has(canonical) && state.labels.has(canonical)) {
+        const id = toAnchorId(canonical);
+        if (!ids.includes(id)) ids.push(id);
+      }
+    }
+  }
+  return ids;
+}
+
+// Pre-scan lines to map the index of each opening $$ line to the anchor IDs
+// for any @eq: labels found inside that block.
+function preCollectEqBlockAnchors(lines: string[], state: NotebookState): Map<number, string[]> {
+  const result = new Map<number, string[]>();
+  let inBlock = false;
+  let blockStart = -1;
+  let blockIds: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (!inBlock && trimmed === '$$') {
+      inBlock = true;
+      blockStart = i;
+      blockIds = [];
+    } else if (inBlock && trimmed === '$$') {
+      if (blockIds.length > 0) result.set(blockStart, blockIds);
+      inBlock = false;
+    } else if (inBlock) {
+      const eqPat = /@eq:(\w+)/g;
+      let em: RegExpExecArray | null;
+      while ((em = eqPat.exec(lines[i])) !== null) {
+        const canonical = 'eq:' + normalize(em[1]);
+        if (!state.duplicates.has(canonical) && state.labels.has(canonical)) {
+          const id = toAnchorId(canonical);
+          if (!blockIds.includes(id)) blockIds.push(id);
+        }
+      }
+    }
+  }
+  return result;
+}
+
 function transformActiveParts(line: string, fn: (text: string) => string): string {
   const parts: string[] = [];
   // Skip backtick code spans and $...$ inline math (but not $$)
@@ -288,12 +356,12 @@ function transformBodyText(text: string, state: NotebookState): string {
     return info ? info.number : match;
   });
 
-  // Replace #ref (including #name:member) with resolved number or warning
+  // Replace #ref (including #name:member) with a markdown link or warning
   result = result.replace(/#(\w+(?::\w+)?)/g, (match, ref) => {
     const canonical = resolveReference(ref, state);
     if (!canonical) return `⚠ unresolved: ${match}`;
     const info = state.labels.get(canonical);
-    return info ? info.number : `⚠ unresolved: ${match}`;
+    return info ? `[${info.number}](#${toAnchorId(canonical)})` : `⚠ unresolved: ${match}`;
   });
 
   return result;
@@ -307,13 +375,15 @@ function transformBodyText(text: string, state: NotebookState): string {
  */
 export function transformMarkdown(md: string, state: NotebookState, mdCellIndex: number = 0): string {
   const lines = md.split('\n');
+  const eqBlockAnchors = preCollectEqBlockAnchors(lines, state);
   const result: string[] = [];
   let inFencedBlock = false;
   let inHtmlComment = false;
   let inDisplayMath = false;
   let pendingEqDuplicates: string[] = [];
 
-  for (const line of lines) {
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx];
     // HTML comment tracking
     if (inHtmlComment) {
       result.push(line);
@@ -358,6 +428,12 @@ export function transformMarkdown(md: string, state: NotebookState, mdCellIndex:
         for (const dup of pendingEqDuplicates) result.push(dup);
         pendingEqDuplicates = [];
       } else {
+        const anchors = eqBlockAnchors.get(lineIdx) ?? [];
+        if (anchors.length > 0) {
+          result.push('');
+          for (const id of anchors) result.push(`<a id="${id}"></a>`);
+          result.push('');
+        }
         inDisplayMath = true;
         result.push(line);
       }
@@ -445,6 +521,9 @@ export function transformMarkdown(md: string, state: NotebookState, mdCellIndex:
         const info = state.labels.get(canonicalLabel);
         if (info && info.kind === 'section') {
           const sep = headingSeparator(info.number);
+          result.push('');
+          result.push(`<a id="${toAnchorId(canonicalLabel)}"></a>`);
+          result.push('');
           result.push(`${hashes} ${info.number}${sep}${title}`);
         } else {
           // Label not in state — output as-is with @label stripped
@@ -455,6 +534,12 @@ export function transformMarkdown(md: string, state: NotebookState, mdCellIndex:
     }
 
     // Body text
+    const lineAnchors = collectLineAnchors(line, state);
+    if (lineAnchors.length > 0) {
+      result.push('');
+      for (const id of lineAnchors) result.push(`<a id="${id}"></a>`);
+      result.push('');
+    }
     result.push(transformActiveParts(line, text => transformBodyText(text, state)));
   }
 

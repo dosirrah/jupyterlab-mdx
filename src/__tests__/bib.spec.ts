@@ -4,7 +4,9 @@ import {
   scanNotebookCitations,
   parseBibFile,
   formatBibliographyEntry,
-  renderBibliographyMarkdown
+  renderBibliographyMarkdown,
+  transformCitationRefs,
+  transformBibliographyDirective
 } from '../bib';
 
 
@@ -497,5 +499,145 @@ describe('mdx bib / renderBibliographyMarkdown', () => {
         '[3] Alfred V. Aho and Monica S. Lam and Ravi Sethi and Jeffrey D. Ullman, "Compilers: Principles, Techniques, and Tools," 2006.'
       ].join('\n\n')
     );
+  });
+});
+
+
+describe('mdx bib / transformCitationRefs hyperlinks', () => {
+  it('replaces a resolved citation with an href link', () => {
+    const state = scanNotebookCitations(['See ^lamport1994.']);
+    const entries = parseBibFile(bibFixture('single_entry.bib'));
+
+    expect(transformCitationRefs('See ^lamport1994.', state, entries)).toBe(
+      'See <a href="#cite-lamport1994">[1]</a>.'
+    );
+  });
+
+  it('replaces multiple citations in one line each with an href link', () => {
+    const state = scanNotebookCitations(['See ^lamport1994 and ^knuth1984.']);
+    const entries = parseBibFile(bibFixture('multiple_entries.bib'));
+
+    expect(
+      transformCitationRefs('See ^lamport1994 and ^knuth1984.', state, entries)
+    ).toBe(
+      'See <a href="#cite-lamport1994">[1]</a> and <a href="#cite-knuth1984">[2]</a>.'
+    );
+  });
+
+  it('gives a repeated citation the same href and number each time', () => {
+    const state = scanNotebookCitations(['^lamport1994 and ^lamport1994']);
+    const entries = parseBibFile(bibFixture('single_entry.bib'));
+
+    expect(
+      transformCitationRefs('^lamport1994 and ^lamport1994', state, entries)
+    ).toBe(
+      '<a href="#cite-lamport1994">[1]</a> and <a href="#cite-lamport1994">[1]</a>'
+    );
+  });
+
+  it('renders an unresolved citation as [?] without an href', () => {
+    const state = scanNotebookCitations(['^missing2025']);
+    const entries = parseBibFile(bibFixture('single_entry.bib'));
+
+    const result = transformCitationRefs('See ^missing2025.', state, entries);
+
+    expect(result).toBe('See [?].');
+    expect(result).not.toContain('<a ');
+  });
+
+  it('does not transform a citation inside an inline code span', () => {
+    const state = scanNotebookCitations(['Use ^lamport1994 directly.']);
+    const entries = parseBibFile(bibFixture('single_entry.bib'));
+
+    const result = transformCitationRefs(
+      'Use `^lamport1994` as a literal.',
+      state,
+      entries
+    );
+
+    expect(result).toBe('Use `^lamport1994` as a literal.');
+  });
+
+  it('does not transform citations inside a fenced code block', () => {
+    const state = scanNotebookCitations(['^lamport1994']);
+    const entries = parseBibFile(bibFixture('single_entry.bib'));
+
+    const input = '```\n^lamport1994\n```';
+    expect(transformCitationRefs(input, state, entries)).toBe(input);
+  });
+});
+
+
+describe('mdx bib / transformBibliographyDirective hyperlinks', () => {
+  it('replaces directive with bibliography entries each preceded by a cite anchor', () => {
+    const state = scanNotebookCitations(['See ^lamport1994.']);
+    const entries = parseBibFile(bibFixture('single_entry.bib'));
+
+    const result = transformBibliographyDirective(
+      '::: bibliography\nsrc: single_entry.bib\n:::',
+      state,
+      entries
+    );
+
+    expect(result).toBe(
+      '\n<a id="cite-lamport1994"></a>\n\n' +
+      '[1] Leslie Lamport, "LaTeX: A Document Preparation System," *Software: Practice and Experience*, 1994.'
+    );
+  });
+
+  it('places an anchor above each of multiple entries', () => {
+    const state = scanNotebookCitations(['See ^lamport1994 and ^knuth1984.']);
+    const entries = parseBibFile(bibFixture('multiple_entries.bib'));
+
+    const result = transformBibliographyDirective(
+      '::: bibliography\nsrc: multiple_entries.bib\n:::',
+      state,
+      entries
+    );
+
+    expect(result).toBe(
+      '\n<a id="cite-lamport1994"></a>\n\n' +
+      '[1] Leslie Lamport, "LaTeX: A Document Preparation System," *Software: Practice and Experience*, 1994.\n\n' +
+      '\n<a id="cite-knuth1984"></a>\n\n' +
+      '[2] Donald E. Knuth, "Literate Programming," *The Computer Journal*, 1984.'
+    );
+  });
+
+  it('preserves text before and after the directive', () => {
+    const state = scanNotebookCitations(['^lamport1994']);
+    const entries = parseBibFile(bibFixture('single_entry.bib'));
+
+    const result = transformBibliographyDirective(
+      'Intro paragraph.\n\n::: bibliography\nsrc: single_entry.bib\n:::\n\nClosing paragraph.',
+      state,
+      entries
+    );
+
+    expect(result).toContain('Intro paragraph.');
+    expect(result).toContain('Closing paragraph.');
+    expect(result).toContain('<a id="cite-lamport1994"></a>');
+    expect(result).toContain('[1] Leslie Lamport');
+  });
+
+  it('does not process a directive inside a fenced code block', () => {
+    const state = scanNotebookCitations(['^lamport1994']);
+    const entries = parseBibFile(bibFixture('single_entry.bib'));
+
+    const input = '```\n::: bibliography\nsrc: single_entry.bib\n:::\n```';
+    const result = transformBibliographyDirective(input, state, entries);
+
+    expect(result).toBe(input);
+    expect(result).not.toContain('<a id=');
+  });
+
+  it('does not process a directive inside an HTML comment', () => {
+    const state = scanNotebookCitations(['^lamport1994']);
+    const entries = parseBibFile(bibFixture('single_entry.bib'));
+
+    const input = '<!-- ::: bibliography\nsrc: single_entry.bib\n::: -->';
+    const result = transformBibliographyDirective(input, state, entries);
+
+    expect(result).toBe(input);
+    expect(result).not.toContain('<a id=');
   });
 });

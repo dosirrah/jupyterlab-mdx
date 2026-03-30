@@ -211,13 +211,29 @@ export function transformCitationRefs(
         if (code !== undefined) return match; // preserve inline code as-is
         const num = citationState.citationNumbers.get(key);
         if (num === undefined || !entries.has(key)) return '[?]';
-        return `[${num}]`;
+        return `<a href="#cite-${key}">[${num}]</a>`;
       }
     );
     result.push(transformed);
   }
 
   return result.join('\n');
+}
+
+
+function renderBibliographyMarkdownWithAnchors(
+  citationState: CitationState,
+  entries: Map<string, BibliographyEntry>
+): string {
+  const parts: string[] = [];
+
+  for (const [key, num] of citationState.citationNumbers.entries()) {
+    const entry = entries.get(key);
+    if (!entry) continue;
+    parts.push(`\n<a id="cite-${key}"></a>\n\n${formatBibliographyEntry(entry, num)}`);
+  }
+
+  return parts.join('\n\n');
 }
 
 
@@ -272,7 +288,7 @@ export function transformBibliographyDirective(
     } else {
       if (line.trim() === ':::') {
         inDirective = false;
-        result.push(renderBibliographyMarkdown(citationState, entries));
+        result.push(renderBibliographyMarkdownWithAnchors(citationState, entries));
       }
       // else: inside directive body — consumed (not emitted)
     }

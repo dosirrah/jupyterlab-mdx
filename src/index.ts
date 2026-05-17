@@ -12,6 +12,7 @@ import {
 import {
   CitationState,
   BibliographyEntry,
+  BibSourceError,
   scanNotebookCitations,
   parseBibFile,
   transformCitationRefs,
@@ -22,6 +23,7 @@ import { scanBibliographyDirectives } from './syntax';
 const stateMap = new WeakMap<NotebookPanel, NotebookState>();
 const citationStateMap = new WeakMap<NotebookPanel, CitationState>();
 const bibEntriesMap = new WeakMap<NotebookPanel, Map<string, BibliographyEntry>>();
+const bibErrorsMap = new WeakMap<NotebookPanel, BibSourceError[]>();
 
 const consoleLogger: ScanLogger = {
   warn(message: string, issue: ScanIssue) {
@@ -58,16 +60,69 @@ function doScan(panel: NotebookPanel): NotebookState {
   return state;
 }
 
+function normalizePath(path: string): { path: string; escapedRoot: boolean } {
+  const parts = path.split('/');
+  const resolved: string[] = [];
+  let escapedRoot = false;
+  for (const part of parts) {
+    if (part === '..') {
+      if (resolved.length === 0) escapedRoot = true;
+      else resolved.pop();
+    } else if (part !== '.') {
+      resolved.push(part);
+    }
+  }
+  return { path: resolved.join('/'), escapedRoot };
+}
+
+interface BibCacheEntry {
+  lastModified: string;
+  entries: Map<string, BibliographyEntry>;
+}
+
+const bibCache = new Map<string, BibCacheEntry>();
+
+async function fetchBibLastModified(bibPath: string): Promise<string | null> {
+  try {
+    const encodedPath = bibPath.split('/').map(encodeURIComponent).join('/');
+    const resp = await fetch(`/api/contents/${encodedPath}`);
+    if (!resp.ok) return null;
+    const data = await resp.json() as { last_modified?: unknown };
+    return typeof data.last_modified === 'string' ? data.last_modified : null;
+  } catch {
+    return null;
+  }
+}
+
 async function loadBibFile(bibPath: string): Promise<string | null> {
   try {
     const encodedPath = bibPath.split('/').map(encodeURIComponent).join('/');
-    const resp = await fetch(`/api/contents/${encodedPath}?content=1&format=text`);
+    const resp = await fetch(`/api/contents/${encodedPath}?content=1&format=text`, { cache: 'no-store' });
     if (!resp.ok) return null;
     const data = await resp.json() as { content?: unknown };
     return typeof data.content === 'string' ? data.content : null;
   } catch {
     return null;
   }
+}
+
+async function loadBibEntries(bibPath: string): Promise<Map<string, BibliographyEntry> | null> {
+  const lastModified = await fetchBibLastModified(bibPath);
+  if (lastModified === null) return null;
+
+  const cached = bibCache.get(bibPath);
+  if (cached && cached.lastModified === lastModified) {
+    console.log('[mdx] bib cache hit:', bibPath);
+    return cached.entries;
+  }
+
+  const content = await loadBibFile(bibPath);
+  if (content === null) return null;
+
+  const entries = parseBibFile(content);
+  console.log('[mdx] bib parsed entries:', [...entries.keys()]);
+  bibCache.set(bibPath, { lastModified, entries });
+  return entries;
 }
 
 async function doCitationScan(panel: NotebookPanel): Promise<void> {
@@ -82,23 +137,35 @@ async function doCitationScan(panel: NotebookPanel): Promise<void> {
   const notebookDir = slashIdx >= 0 ? localPath.slice(0, slashIdx) : '';
 
   const allEntries = new Map<string, BibliographyEntry>();
+  const bibErrors: BibSourceError[] = [];
 
   for (const src of sources) {
     const directives = scanBibliographyDirectives(src);
     for (const directive of directives) {
       if (!directive.src) continue;
-      const bibPath = notebookDir ? `${notebookDir}/${directive.src}` : directive.src;
-      const bibContent = await loadBibFile(bibPath);
-      if (bibContent) {
-        const entries = parseBibFile(bibContent);
+      const { path: bibPath, escapedRoot } = normalizePath(
+        notebookDir ? `${notebookDir}/${directive.src}` : directive.src
+      );
+      if (escapedRoot) {
+        console.warn('[mdx] bib path escapes JupyterLab root:', directive.src, '→', bibPath);
+        bibErrors.push({ src: directive.src, reason: 'sandbox', resolvedPath: bibPath });
+        continue;
+      }
+      const entries = await loadBibEntries(bibPath);
+      if (entries) {
         for (const [key, entry] of entries) {
           if (!allEntries.has(key)) allEntries.set(key, entry);
         }
+      } else {
+        console.warn('[mdx] failed to load bib:', bibPath);
+        bibErrors.push({ src: directive.src, reason: 'not-found', resolvedPath: bibPath });
       }
     }
   }
 
+  console.log('[mdx] citation keys scanned:', [...citState.citationNumbers.keys()]);
   bibEntriesMap.set(panel, allEntries);
+  bibErrorsMap.set(panel, bibErrors);
 }
 
 // Patch a cell's renderer so every renderModel call—ours or JupyterLab's—
@@ -119,10 +186,11 @@ function patchCellRenderer(cell: MarkdownCell, panel: NotebookPanel, mdCellIndex
     const state = stateMap.get(panel) ?? emptyState;
     const citState = citationStateMap.get(panel) ?? emptyCitationState;
     const entries = bibEntriesMap.get(panel) ?? new Map<string, BibliographyEntry>();
+    const bibErrors = bibErrorsMap.get(panel) ?? [];
     const src = (model.data?.[mimeType] as string) ?? '';
     let xformed = transformMarkdown(src, state, mdCellIndex);
     xformed = transformCitationRefs(xformed, citState, entries);
-    xformed = transformBibliographyDirective(xformed, citState, entries);
+    xformed = transformBibliographyDirective(xformed, citState, entries, bibErrors);
     return origRenderModel({
       data: { [mimeType]: xformed },
       metadata: model.metadata ?? {},
@@ -171,7 +239,7 @@ const plugin: JupyterFrontEndPlugin<void> = {
     app: JupyterFrontEnd,
     tracker: INotebookTracker
   ) => {
-    console.log('MDX LOAD OK 2026-03-21');
+    console.log('MDX LOAD OK 2026-05-16');
 
     // Wrap run actions to re-scan and re-render after any cell execution
     const wrap = (

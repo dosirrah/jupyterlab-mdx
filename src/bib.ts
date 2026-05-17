@@ -29,6 +29,12 @@ export interface BibliographyEntry {
   fields: Map<string, string>;
 }
 
+export interface BibSourceError {
+  src: string;
+  reason: 'sandbox' | 'not-found' | 'unknown';
+  resolvedPath: string;
+}
+
 export function parseBibFile(source: string): Map<string, BibliographyEntry> {
   const entries = new Map<string, BibliographyEntry>();
 
@@ -237,6 +243,19 @@ function renderBibliographyMarkdownWithAnchors(
 }
 
 
+function renderBibSourceErrors(errors: BibSourceError[]): string {
+  return errors.map(e => {
+    if (e.reason === 'sandbox') {
+      return `⚠ Cannot load \`${e.src}\`: path escapes the JupyterLab root directory.\n\nThe JupyterLab contents API cannot serve files above the directory where JupyterLab was started. Start JupyterLab from a common ancestor of this notebook and the \`.bib\` file.`;
+    } else if (e.reason === 'not-found') {
+      return `⚠ Cannot load \`${e.src}\`: file not found at \`${e.resolvedPath}\`.\n\nCheck that the path is correct relative to this notebook.`;
+    } else {
+      return `⚠ Cannot load \`${e.src}\`: unknown error.`;
+    }
+  }).join('\n\n');
+}
+
+
 /**
  * Replace `::: bibliography ... :::` directive blocks with rendered bibliography
  * markdown.  Blocks inside fenced code blocks or HTML comments are left unchanged.
@@ -244,7 +263,8 @@ function renderBibliographyMarkdownWithAnchors(
 export function transformBibliographyDirective(
   markdown: string,
   citationState: CitationState,
-  entries: Map<string, BibliographyEntry>
+  entries: Map<string, BibliographyEntry>,
+  sourceErrors?: BibSourceError[]
 ): string {
   // Precompute HTML comment character ranges so we can skip directives inside them.
   const commentRanges: [number, number][] = [];
@@ -288,7 +308,13 @@ export function transformBibliographyDirective(
     } else {
       if (line.trim() === ':::') {
         inDirective = false;
-        result.push(renderBibliographyMarkdownWithAnchors(citationState, entries));
+        const parts: string[] = [];
+        if (sourceErrors && sourceErrors.length > 0) {
+          parts.push(renderBibSourceErrors(sourceErrors));
+        }
+        const bib = renderBibliographyMarkdownWithAnchors(citationState, entries);
+        if (bib) parts.push(bib);
+        result.push(parts.join('\n\n'));
       }
       // else: inside directive body — consumed (not emitted)
     }

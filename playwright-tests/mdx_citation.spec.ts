@@ -318,6 +318,72 @@ test.describe('mdx citations / bibliography fixture variants', () => {
   });
 });
 
+test.describe('mdx citations / bib cache invalidation', () => {
+  const bibApiPath = 'playwright-tests/fixtures/bib_cache_test.bib';
+  const originalBib = '@article{testcache2024,\n  author    = {Original Cache Author},\n  title     = {Cache Invalidation Test},\n  journal   = {Test Journal},\n  year      = {2024}\n}\n';
+  const updatedBib  = '@article{testcache2024,\n  author    = {Updated Cache Author},\n  title     = {Cache Invalidation Test},\n  journal   = {Test Journal},\n  year      = {2024}\n}\n';
+
+  async function writeBib(page: any, content: string): Promise<void> {
+    const status = await page.evaluate(async (args: { path: string; content: string }) => {
+      const xsrf = document.cookie.split('; ')
+        .find(row => row.startsWith('_xsrf='))?.split('=')[1] ?? '';
+      const resp = await fetch(`/api/contents/${args.path}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-XSRFToken': xsrf },
+        body: JSON.stringify({ type: 'file', format: 'text', content: args.content })
+      });
+      return resp.status;
+    }, { path: bibApiPath, content });
+    if (status !== 200 && status !== 201) {
+      throw new Error(`writeBib failed with HTTP ${status}`);
+    }
+  }
+
+  test.afterEach(async ({ page }) => {
+    await writeBib(page, originalBib);
+  });
+
+  test('bib file is reloaded when last_modified changes', async ({ page }) => {
+    await page.goto('/lab/tree/playwright-tests/fixtures/bib_cache_test.ipynb?reset');
+    await expect(md(page, 1)).toBeVisible();
+    await expect(md(page, 1)).toContainText('Original Cache Author');
+
+    // Modify the bib file, then wait >1 s so the Linux filesystem mtime
+    // (1-second granularity inside Docker) is guaranteed to differ from the
+    // timestamp recorded when the notebook was first opened.
+    await writeBib(page, updatedBib);
+    await page.waitForTimeout(1100);
+
+    // Trigger a full notebook re-scan via Run > Run All Cells.
+    // This calls NotebookActions.runAll (our wrapped version), which then
+    // runs doCitationScan + rerenderMarkdown after execution.
+    await page.locator('.lm-MenuBar-item').filter({ hasText: /^Run$/ }).click();
+    await page.locator('.lm-Menu-item[data-command="runmenu:run-all"]').click();
+
+    // Bibliography should reflect the updated content
+    await expect(md(page, 1)).toContainText('Updated Cache Author', { timeout: 10000 });
+    await expect(md(page, 1)).not.toContainText('Original Cache Author');
+  });
+});
+
+test.describe('mdx citations / bibliography load errors', () => {
+  test('sandbox_escape renders error in bibliography cell when src escapes JupyterLab root', async ({ page }) => {
+    await page.goto('/lab/tree/playwright-tests/fixtures/single_cell_bibliography_sandbox_escape.ipynb?reset');
+    await expect(md(page, 1)).toBeVisible();
+    await expect(md(page, 1)).toContainText('⚠ Cannot load');
+    await expect(md(page, 1)).toContainText('../../../outside.bib');
+    await expect(md(page, 1)).toContainText('path escapes the JupyterLab root directory');
+  });
+
+  test('file_not_found renders error in bibliography cell when src does not exist', async ({ page }) => {
+    await page.goto('/lab/tree/playwright-tests/fixtures/single_cell_bibliography_file_not_found.ipynb?reset');
+    await expect(md(page, 1)).toBeVisible();
+    await expect(md(page, 1)).toContainText('⚠ Cannot load');
+    await expect(md(page, 1)).toContainText('nonexistent_file_abc123.bib');
+    await expect(md(page, 1)).toContainText('file not found');
+  });
+});
+
 test.describe('mdx citations / consistency model', () => {
   test('single_entry.bib renders simplified IEEE-style output', async ({ page }) => {
     await page.goto('/lab/tree/playwright-tests/fixtures/multi_cell_with_bibliography_directive_single_entry.ipynb?reset');
